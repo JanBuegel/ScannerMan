@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>TiTo Suite</title>
+  <title>ScannerMan</title>
   <style>
     /* ── Design tokens ─────────────────────────────────────────────────────── */
     :root {
@@ -85,16 +85,16 @@
 
     /* ── App shell ─────────────────────────────────────────────────────────── */
     .app-header {
-      display: flex; align-items: center; gap: 12px;
-      padding: 16px 24px 0;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px 24px 0;
     }
-    .app-title { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+    .app-title { font-size: 20px; font-weight: 800; letter-spacing: -.4px; }
     .app-title span { color: var(--primary); }
 
     /* ── Tab navigation ────────────────────────────────────────────────────── */
     .tab-nav {
-      display: flex; gap: 2px;
-      padding: 16px 24px 0;
+      display: flex; justify-content: center; gap: 2px;
+      padding: 14px 24px 0;
       border-bottom: 1px solid var(--border);
       overflow-x: auto;
     }
@@ -333,7 +333,7 @@
     }
 
     /* ── Results / Serial Checker ──────────────────────────────────────────── */
-    #sc-results-wrap { margin-top: 22px; display: none; }
+    #sc-results-wrap { display: none; }
 
     .results-bar {
       display: flex; align-items: center;
@@ -508,7 +508,7 @@
 
   <!-- ── App header ──────────────────────────────────────────────────────────── -->
   <div class="app-header">
-    <div class="app-title">TiTo <span>Suite</span></div>
+    <div class="app-title">Scanner<span>Man</span></div>
   </div>
 
   <!-- ── Tab navigation ─────────────────────────────────────────────────────── -->
@@ -522,9 +522,12 @@
   <!-- ══════════════════════════════════════════════════════════════════════════
        TAB 1 — SERIAL CHECKER
   ══════════════════════════════════════════════════════════════════════════════ -->
-  <section class="tab-content" id="tab-checker">
-    <div class="page-title">Serial Checker</div>
-    <p class="page-sub">Paynless SN · Rentman SN — side by side</p>
+  <section class="tab-content" id="tab-checker" style="max-width:720px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="font-size:30px;margin-bottom:8px">🔍</div>
+      <div class="page-title">Serial Checker</div>
+      <p class="page-sub" style="margin-bottom:0">Paynless SN · Rentman SN — side by side</p>
+    </div>
 
     <div class="card">
       <label class="field-label" for="sc-input">Unsere Seriennummern</label>
@@ -546,7 +549,7 @@
       </div>
     </div>
 
-    <div id="sc-results-wrap">
+    <div id="sc-results-wrap" style="margin-top:22px;display:none">
       <div class="results-bar">
         <span class="results-label">Ergebnis</span>
         <span class="results-meta" id="sc-results-meta"></span>
