@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TiTo Suite</title>
+  <style>
+    /* ── Design tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --bg:           #f4f6fb;
+      --surface:      #ffffff;
+      --surface-2:    #f0f2f8;
+      --border:       #dde1ee;
+      --border-focus: #6366f1;
+      --text:         #1a1d2e;
+      --text-muted:   #6b7280;
+      --text-xmuted:  #a0aec0;
+      --primary:      #6366f1;
+      --primary-dark: #4f46e5;
+      --primary-fg:   #ffffff;
+      --tag-bg:       #eef2ff;
+      --tag-fg:       #4f46e5;
+      --tag-border:   #c7d2fe;
+      --ok:           #059669;
+      --ok-bg:        #f0fdf4;
+      --ok-border:    #bbf7d0;
+      --warn:         #d97706;
+      --warn-bg:      #fffbeb;
+      --warn-border:  #fde68a;
+      --err-bg:       #fff1f2;
+      --err-border:   #fecdd3;
+      --err-text:     #e11d48;
+      --radius:       10px;
+      --radius-sm:    6px;
+      --shadow:       0 1px 3px rgba(0,0,0,.07), 0 6px 20px rgba(0,0,0,.06);
+      --shadow-sm:    0 1px 2px rgba(0,0,0,.06);
+      --j-key:        #0369a1;
+      --j-str:        #15803d;
+      --j-num:        #b45309;
+      --j-bool:       #7c3aed;
+      --j-null:       #9ca3af;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:           #0c0e1a;
+        --surface:      #141828;
+        --surface-2:    #1c2038;
+        --border:       #272c4a;
+        --border-focus: #818cf8;
+        --text:         #e2e8f0;
+        --text-muted:   #94a3b8;
+        --text-xmuted:  #4b5563;
+        --primary:      #818cf8;
+        --primary-dark: #6366f1;
+        --tag-bg:       #1e1b4b;
+        --tag-fg:       #a5b4fc;
+        --tag-border:   #3730a3;
+        --ok:           #34d399;
+        --ok-bg:        #052e16;
+        --ok-border:    #14532d;
+        --warn:         #fbbf24;
+        --warn-bg:      #1c1400;
+        --warn-border:  #78350f;
+        --err-bg:       #1c0a10;
+        --err-border:   #9f1239;
+        --err-text:     #fb7185;
+        --j-key:        #38bdf8;
+        --j-str:        #4ade80;
+        --j-num:        #fbbf24;
+        --j-bool:       #a78bfa;
+        --j-null:       #6b7280;
+      }
+    }
+
+    /* ── Reset ─────────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── App shell ─────────────────────────────────────────────────────────── */
+    .app-header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 16px 24px 0;
+    }
+    .app-title { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+    .app-title span { color: var(--primary); }
+
+    /* ── Tab navigation ────────────────────────────────────────────────────── */
+    .tab-nav {
+      display: flex; gap: 2px;
+      padding: 16px 24px 0;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    .tab-nav::-webkit-scrollbar { display: none; }
+
+    .tab-item {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 9px 18px 10px;
+      font-size: 13px; font-weight: 600;
+      color: var(--text-muted);
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      cursor: pointer; user-select: none;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: color .15s, background .15s;
+      background: transparent;
+      position: relative; bottom: -1px;
+    }
+    .tab-item:hover { color: var(--text); background: var(--surface-2); }
+    .tab-item.active {
+      color: var(--text);
+      background: var(--surface);
+      border-color: var(--border);
+      border-bottom-color: var(--surface);
+    }
+
+    /* ── Page content ──────────────────────────────────────────────────────── */
+    .tab-content {
+      display: none;
+      padding: 36px 24px 80px;
+      max-width: 760px; margin: 0 auto;
+    }
+    .tab-content.active { display: block; }
+
+    .page-title {
+      font-size: 20px; font-weight: 700; letter-spacing: -.3px;
+      margin-bottom: 6px;
+    }
+    .page-sub {
+      font-size: 13px; color: var(--text-muted); margin-bottom: 28px;
+    }
+
+    /* ── Card ──────────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 24px 28px;
+    }
+
+    /* ── Form fields ───────────────────────────────────────────────────────── */
+    .field { margin-bottom: 18px; }
+    .field:last-child { margin-bottom: 0; }
+
+    .field-label {
+      display: block;
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: var(--text-muted); margin-bottom: 7px;
+    }
+
+    input[type=text], input[type=number], textarea, select {
+      width: 100%;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 9px 12px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    input[type=text]:focus, input[type=number]:focus,
+    textarea:focus, select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+    }
+    textarea { resize: vertical; min-height: 80px; }
+    select { cursor: pointer; }
+
+    /* ── Tag input ─────────────────────────────────────────────────────────── */
+    .tag-field {
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 8px 10px;
+      cursor: text;
+      display: flex; flex-wrap: wrap; gap: 6px;
+      min-height: 52px; align-items: flex-start;
+      background: var(--surface);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .tag-field:focus-within {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+    }
+    .tag-field.shake { animation: shake .3s ease; }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25%     { transform: translateX(-5px); }
+      75%     { transform: translateX(5px); }
+    }
+
+    .tag {
+      display: inline-flex; align-items: center; gap: 3px;
+      background: var(--tag-bg); color: var(--tag-fg);
+      border: 1px solid var(--tag-border); border-radius: 4px;
+      padding: 3px 4px 3px 9px;
+      font: 600 12px/1 'SF Mono','Fira Code','Cascadia Code',monospace;
+    }
+    .tag-remove {
+      background: none; border: none; cursor: pointer;
+      color: var(--tag-fg); opacity: .55; font-size: 15px;
+      line-height: 1; padding: 1px 2px; transition: opacity .1s;
+    }
+    .tag-remove:hover { opacity: 1; }
+
+    .tag-input-bare {
+      border: none; outline: none; background: transparent;
+      color: var(--text);
+      font: 14px/1 'SF Mono','Fira Code','Cascadia Code',monospace;
+      min-width: 160px; flex: 1; padding: 4px 2px;
+    }
+    .tag-input-bare::placeholder { color: var(--text-xmuted); font-size: 13px; }
+
+    .hint { font-size: 12px; color: var(--text-xmuted); margin-top: 7px; }
+    kbd {
+      font-family: inherit;
+      background: var(--surface-2); border: 1px solid var(--border);
+      border-radius: 3px; padding: 1px 5px; font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* ── Buttons ───────────────────────────────────────────────────────────── */
+    .actions { display: flex; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--primary); color: var(--primary-fg);
+      border: none; border-radius: var(--radius-sm);
+      padding: 10px 22px; font-size: 14px; font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, transform .1s, box-shadow .15s;
+      box-shadow: var(--shadow-sm);
+    }
+    .btn-primary:hover:not(:disabled) {
+      background: var(--primary-dark);
+      box-shadow: 0 3px 8px color-mix(in srgb, var(--primary) 30%, transparent);
+    }
+    .btn-primary:active:not(:disabled) { transform: scale(.97); }
+    .btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+
+    .btn-ghost {
+      background: transparent; color: var(--text-muted);
+      border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+      padding: 10px 16px; font-size: 14px; cursor: pointer;
+      transition: color .15s, border-color .15s;
+    }
+    .btn-ghost:hover { color: var(--text); border-color: var(--text-muted); }
+    .btn-ghost:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--surface-2); color: var(--text);
+      border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+      padding: 10px 18px; font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: all .15s;
+    }
+    .btn-secondary:hover:not(:disabled) { border-color: var(--text-muted); }
+    .btn-secondary:disabled { opacity: .5; cursor: not-allowed; }
+
+    .btn-save {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--warn-bg); color: var(--warn);
+      border: 1px solid var(--warn-border); border-radius: 5px;
+      padding: 3px 10px; font-size: 12px; font-weight: 600;
+      cursor: pointer; white-space: nowrap; transition: filter .15s;
+    }
+    .btn-save:hover { filter: brightness(.95); }
+    .btn-save:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-save.saved { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+
+    .spinner {
+      width: 13px; height: 13px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .65s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .spinner-dark {
+      width: 13px; height: 13px;
+      border: 2px solid var(--border);
+      border-top-color: var(--text-muted);
+      border-radius: 50%;
+      animation: spin .65s linear infinite; flex-shrink: 0;
+    }
+
+    /* ── Toggle / mode switch ──────────────────────────────────────────────── */
+    .mode-toggle {
+      display: inline-flex;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 3px; gap: 2px;
+      margin-bottom: 22px;
+    }
+    .mode-btn {
+      padding: 6px 16px; border-radius: 5px;
+      font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none;
+      background: transparent; color: var(--text-muted);
+      transition: all .15s;
+    }
+    .mode-btn.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
+
+    /* ── Radio group ───────────────────────────────────────────────────────── */
+    .radio-group { display: flex; gap: 10px; flex-wrap: wrap; }
+    .radio-label {
+      display: inline-flex; align-items: center; gap: 7px;
+      padding: 8px 14px;
+      border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+      cursor: pointer; font-size: 13px; font-weight: 600;
+      color: var(--text-muted); transition: all .15s;
+      user-select: none;
+    }
+    .radio-label input { display: none; }
+    .radio-label:hover { color: var(--text); border-color: var(--text-muted); }
+    .radio-label.selected {
+      color: var(--primary); background: var(--tag-bg);
+      border-color: var(--primary);
+    }
+
+    /* ── Results / Serial Checker ──────────────────────────────────────────── */
+    #sc-results-wrap { margin-top: 22px; display: none; }
+
+    .results-bar {
+      display: flex; align-items: center;
+      justify-content: space-between; margin-bottom: 10px;
+    }
+    .results-label {
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em; color: var(--text-muted);
+    }
+    .results-meta { font-size: 11px; color: var(--text-xmuted); }
+
+    .result-table-wrap {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden;
+    }
+    .table-header {
+      display: flex; align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      background: var(--surface-2); gap: 12px; flex-wrap: wrap;
+    }
+    .table-summary { font-size: 13px; color: var(--text-muted); }
+    .table-summary strong { color: var(--text); font-weight: 600; }
+    .table-actions { display: flex; gap: 8px; }
+
+    .icon-btn {
+      background: transparent; border: 1.5px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 4px 11px; font-size: 12px;
+      color: var(--text-muted); cursor: pointer; transition: all .15s;
+    }
+    .icon-btn:hover { color: var(--text); border-color: var(--text-muted); }
+    .icon-btn.ok { color: var(--ok); border-color: var(--ok); }
+    .icon-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    table.result-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    table.result-table th {
+      text-align: left; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em;
+      color: var(--text-muted); padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface-2); white-space: nowrap;
+    }
+    table.result-table td {
+      padding: 10px 14px; border-bottom: 1px solid var(--border);
+      font-family: 'SF Mono','Fira Code','Cascadia Code',monospace;
+      font-size: 12px; vertical-align: middle;
+    }
+    table.result-table tbody tr:last-child td { border-bottom: none; }
+    table.result-table tbody tr:hover td { background: var(--surface-2); }
+    .td-ref    { color: var(--text-muted); width: 22%; font-weight: 600; }
+    .td-serial { color: var(--text); width: 30%; }
+    .td-serial.empty { color: var(--text-xmuted); font-style: italic; }
+    .td-action { width: 18%; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      font-size: 11px; font-weight: 600; border-radius: 4px; padding: 2px 7px;
+      font-family: -apple-system, sans-serif; white-space: nowrap;
+    }
+    .badge-match   { background: var(--ok-bg);    color: var(--ok);   border: 1px solid var(--ok-border); }
+    .badge-warn    { background: var(--warn-bg);   color: var(--warn); border: 1px solid var(--warn-border); }
+    .badge-neutral { background: var(--surface-2); color: var(--text-muted); border: 1px solid var(--border); }
+
+    details.raw-json { margin-top: 10px; }
+    details.raw-json summary {
+      font-size: 12px; color: var(--text-xmuted); cursor: pointer;
+      user-select: none; padding: 2px 0; list-style: none;
+      display: flex; align-items: center; gap: 5px;
+    }
+    details.raw-json summary::before { content: '▶'; font-size: 9px; transition: transform .15s; }
+    details[open].raw-json summary::before { transform: rotate(90deg); }
+    details.raw-json summary:hover { color: var(--text-muted); }
+    details.raw-json pre { margin-top: 8px; font-size: 12px; }
+    pre {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; overflow-x: auto;
+      font-family: 'SF Mono','Fira Code','Cascadia Code',monospace;
+      font-size: 13px; line-height: 1.7; box-shadow: var(--shadow);
+    }
+    .j-key  { color: var(--j-key); }
+    .j-str  { color: var(--j-str); }
+    .j-num  { color: var(--j-num); }
+    .j-bool { color: var(--j-bool); }
+    .j-null { color: var(--j-null); }
+
+    /* ── Error / success boxes ─────────────────────────────────────────────── */
+    .error-box {
+      background: var(--err-bg); border: 1px solid var(--err-border);
+      border-radius: var(--radius-sm); padding: 14px 16px;
+      font-size: 14px; color: var(--err-text);
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .error-box svg { flex-shrink: 0; margin-top: 1px; }
+
+    .success-box {
+      background: var(--ok-bg); border: 1px solid var(--ok-border);
+      border-radius: var(--radius-sm); padding: 14px 16px;
+      font-size: 14px; color: var(--ok);
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    /* ── Serial Pairing ────────────────────────────────────────────────────── */
+    .pair-inputs {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+    @media (max-width: 520px) { .pair-inputs { grid-template-columns: 1fr; } }
+
+    .pair-history {
+      margin-top: 28px;
+    }
+    .pair-history-title {
+      font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: var(--text-muted); margin-bottom: 10px;
+    }
+    .pair-history-list {
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .pair-row {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 10px 14px;
+      font-family: 'SF Mono','Fira Code','Cascadia Code',monospace;
+      font-size: 12px; animation: fadeIn .2s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+    .pair-row .pr-ref  { color: var(--text-muted); font-weight: 600; min-width: 90px; }
+    .pair-row .pr-arr  { color: var(--text-xmuted); }
+    .pair-row .pr-sn   { color: var(--ok); flex: 1; }
+    .pair-row .pr-prev { font-size: 11px; color: var(--text-xmuted); font-style: italic; }
+    .pair-row .pr-time { font-size: 11px; color: var(--text-xmuted); margin-left: auto; font-style: normal; font-family: inherit; }
+
+    /* ── Print / Label inputs ──────────────────────────────────────────────── */
+    .custom-lines { display: flex; flex-direction: column; gap: 8px; }
+    .custom-line-row { display: flex; gap: 8px; }
+    .custom-line-row input { flex: 1; }
+    .btn-icon {
+      padding: 8px 11px; background: var(--surface-2);
+      border: 1.5px solid var(--border); border-radius: var(--radius-sm);
+      cursor: pointer; color: var(--text-muted); font-size: 16px;
+      line-height: 1; transition: all .15s; flex-shrink: 0;
+    }
+    .btn-icon:hover { color: var(--text); border-color: var(--text-muted); }
+
+    .print-toast {
+      display: none; margin-top: 16px;
+      padding: 12px 16px; border-radius: var(--radius-sm);
+      font-size: 13px; font-weight: 600;
+    }
+    .print-toast.ok  { background: var(--ok-bg);  color: var(--ok);      border: 1px solid var(--ok-border); display: flex; gap: 8px; align-items: center; }
+    .print-toast.err { background: var(--err-bg); color: var(--err-text); border: 1px solid var(--err-border); display: flex; gap: 8px; align-items: center; }
+
+    .row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 520px) { .row-2col { grid-template-columns: 1fr; } }
+
+    /* ── Accessories presets ───────────────────────────────────────────────── */
+    .preset-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+    .preset-chip {
+      padding: 3px 12px; border-radius: 20px;
+      font-size: 12px; font-weight: 600; cursor: pointer;
+      border: 1.5px solid var(--border); background: var(--surface-2);
+      color: var(--text-muted); transition: all .15s; user-select: none;
+    }
+    .preset-chip:hover { border-color: var(--primary); color: var(--primary); }
+    .preset-chip.active { background: var(--tag-bg); color: var(--tag-fg); border-color: var(--primary); }
+  </style>
+</head>
+<body>
+
+  <!-- ── App header ──────────────────────────────────────────────────────────── -->
+  <div class="app-header">
+    <div class="app-title">TiTo <span>Suite</span></div>
+  </div>
+
+  <!-- ── Tab navigation ─────────────────────────────────────────────────────── -->
+  <nav class="tab-nav" id="tab-nav">
+    <a class="tab-item" data-tab="checker"  href="#checker">🔍 Serial Checker</a>
+    <a class="tab-item" data-tab="pairing"  href="#pairing">🔗 Serial Pairing</a>
+    <a class="tab-item" data-tab="labels"   href="#labels">🏷 Aufkleber</a>
+    <a class="tab-item" data-tab="cards"    href="#cards">📄 Gerätekarten</a>
+  </nav>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TAB 1 — SERIAL CHECKER
+  ══════════════════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-checker">
+    <div class="page-title">Serial Checker</div>
+    <p class="page-sub">Paynless SN · Rentman SN — side by side</p>
+
+    <div class="card">
+      <label class="field-label" for="sc-input">Unsere Seriennummern</label>
+      <div class="tag-field" id="sc-tag-field">
+        <input id="sc-input" class="tag-input-bare" type="text"
+               placeholder="Kürzel scannen oder eintippen…"
+               autocomplete="off" spellcheck="false" />
+      </div>
+      <p class="hint">
+        Scan oder Eingabe — <kbd>Enter</kbd> / <kbd>,</kbd> / <kbd>Space</kbd> fügt hinzu.
+        Abschicken mit <kbd>⌘ Enter</kbd> oder <kbd>Ctrl Enter</kbd>.
+        <kbd>Backspace</kbd> entfernt das letzte Kürzel.
+      </p>
+      <div class="actions">
+        <button class="btn-primary" id="sc-lookup-btn" onclick="scDoLookup()">
+          <span id="sc-btn-inner">Look Up</span>
+        </button>
+        <button class="btn-ghost" onclick="scClearAll()">Clear</button>
+      </div>
+    </div>
+
+    <div id="sc-results-wrap">
+      <div class="results-bar">
+        <span class="results-label">Ergebnis</span>
+        <span class="results-meta" id="sc-results-meta"></span>
+      </div>
+      <div id="sc-result-body"></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TAB 2 — SERIAL PAIRING
+  ══════════════════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-pairing">
+    <div class="page-title">Serial Pairing</div>
+    <p class="page-sub">Unsere SN scannen, Vendor SN scannen → direkt nach Rentman</p>
+
+    <div class="card">
+      <div class="pair-inputs">
+        <div class="field">
+          <label class="field-label" for="pair-ref">Unsere SN (Ref)</label>
+          <input id="pair-ref" type="text"
+                 placeholder="z. B. L2s001"
+                 autocomplete="off" spellcheck="false"
+                 autocapitalize="off" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="pair-vendor">Vendor SN</label>
+          <input id="pair-vendor" type="text"
+                 placeholder="z. B. LB3621AW30272"
+                 autocomplete="off" spellcheck="false"
+                 autocapitalize="off" />
+        </div>
+      </div>
+      <div id="pair-feedback"></div>
+      <div class="actions" style="margin-top:16px">
+        <button class="btn-primary" id="pair-btn" onclick="pairPush()">
+          <span id="pair-btn-inner">→ Nach Rentman pushen</span>
+        </button>
+        <button class="btn-ghost" onclick="pairClear()">Clear</button>
+      </div>
+    </div>
+
+    <div class="pair-history" id="pair-history" style="display:none">
+      <div class="pair-history-title">Dieser Session</div>
+      <div class="pair-history-list" id="pair-history-list"></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TAB 3 — GERÄTEAUFKLEBER
+  ══════════════════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-labels">
+    <div class="page-title">Geräteaufkleber</div>
+    <p class="page-sub">Zebra-Etiketten drucken — Standard oder komplett custom</p>
+
+    <div class="card">
+      <!-- Mode toggle -->
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="lbl-mode-std" onclick="lblSetMode('standard')">Standard</button>
+        <button class="mode-btn" id="lbl-mode-cus" onclick="lblSetMode('custom')">Custom</button>
+      </div>
+
+      <!-- Standard mode -->
+      <div id="lbl-standard">
+        <div class="field">
+          <label class="field-label" for="lbl-serial">Seriennummer(n)</label>
+          <textarea id="lbl-serial" rows="4"
+                    placeholder="Eine SN pro Zeile — z. B. L2s001&#10;Endet auf Zahl → wird hochgezählt"></textarea>
+          <p class="hint">Jede Zeile = eigene Druckserie. Endet die SN auf eine Zahl, wird sie über
+            <em>Anzahl</em> Exemplare hochgezählt.</p>
+        </div>
+        <div class="row-2col">
+          <div class="field">
+            <label class="field-label" for="lbl-qty-std">Anzahl je SN</label>
+            <input type="number" id="lbl-qty-std" value="1" min="1" max="200" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="lbl-printer-std">Drucker</label>
+            <select id="lbl-printer-std"><option value="">– Drucker laden –</option></select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Custom mode -->
+      <div id="lbl-custom" style="display:none">
+        <div class="field">
+          <label class="field-label">Text-Zeilen <span style="font-weight:400;text-transform:none;font-size:11px">(max 3)</span></label>
+          <div class="custom-lines" id="lbl-lines">
+            <div class="custom-line-row">
+              <input type="text" placeholder="Zeile 1" class="lbl-line" autocomplete="off" />
+            </div>
+          </div>
+          <button class="btn-icon" style="margin-top:8px" onclick="lblAddLine()" id="lbl-add-line-btn" title="Zeile hinzufügen">+</button>
+        </div>
+        <div class="field">
+          <label class="field-label">QR-Code Inhalt <span style="font-weight:400;text-transform:none;font-size:11px">(optional)</span></label>
+          <input type="text" id="lbl-qr" placeholder="Leer = kein QR-Code" autocomplete="off" />
+          <p class="hint">Kann ein URL, eine SN oder beliebiger Text sein.</p>
+        </div>
+        <div class="row-2col">
+          <div class="field">
+            <label class="field-label" for="lbl-qty-cus">Anzahl</label>
+            <input type="number" id="lbl-qty-cus" value="1" min="1" max="200" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="lbl-printer-cus">Drucker</label>
+            <select id="lbl-printer-cus"><option value="">– Drucker laden –</option></select>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" id="lbl-print-btn" onclick="lblPrint()">
+          <span id="lbl-print-inner">🖨 Drucken</span>
+        </button>
+      </div>
+      <div class="print-toast" id="lbl-toast"></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       TAB 4 — GERÄTEKARTEN
+  ══════════════════════════════════════════════════════════════════════════════ -->
+  <section class="tab-content" id="tab-cards">
+    <div class="page-title">Gerätekarten</div>
+    <p class="page-sub">Große Karte mit Zubehör, QR-Code und Logo — drucken oder als PDF</p>
+
+    <div class="card">
+      <div class="field">
+        <label class="field-label" for="card-serial">Seriennummer</label>
+        <input type="text" id="card-serial" placeholder="z. B. L2s001"
+               autocomplete="off" spellcheck="false" autocapitalize="off" />
+      </div>
+
+      <div class="field">
+        <label class="field-label">Produkttyp</label>
+        <div class="preset-chips" id="card-presets">
+          <span class="preset-chip" data-type="D2mini">D2mini</span>
+          <span class="preset-chip" data-type="T2S">T2S</span>
+          <span class="preset-chip" data-type="V3Mix">V3 Mix</span>
+          <span class="preset-chip" data-type="custom">Custom</span>
+        </div>
+        <input type="text" id="card-type-custom" placeholder="Eigener Produkttyp…"
+               style="display:none;margin-top:8px" autocomplete="off" />
+      </div>
+
+      <div class="field">
+        <label class="field-label" for="card-acc">Zubehör</label>
+        <textarea id="card-acc" rows="5" placeholder="Eine Position pro Zeile"></textarea>
+      </div>
+
+      <div class="row-2col">
+        <div class="field">
+          <label class="field-label" for="card-qty">Anzahl</label>
+          <input type="number" id="card-qty" value="1" min="1" max="50" />
+        </div>
+        <div class="field">
+          <label class="field-label" for="card-printer">Drucker</label>
+          <select id="card-printer"><option value="">– Drucker laden –</option></select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-primary" id="card-print-btn" onclick="cardPrint()">
+          <span id="card-print-inner">🖨 Drucken</span>
+        </button>
+        <button class="btn-secondary" id="card-pdf-btn" onclick="cardPdf()">
+          <span id="card-pdf-inner">⬇ PDF</span>
+        </button>
+      </div>
+      <div class="print-toast" id="card-toast"></div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════════════
+       SCRIPT
+  ══════════════════════════════════════════════════════════════════════════════ -->
+  <script>
+  // ── Utilities ─────────────────────────────────────────────────────────────
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function highlight(html) {
+    return html.replace(
+      /(&quot;(?:[^&]|&amp;|&lt;|&gt;|&#39;)*?&quot;(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+      m => {
+        if (m.startsWith('&quot;'))
+          return m.endsWith(':') ? `<span class="j-key">${m}</span>` : `<span class="j-str">${m}</span>`;
+        if (m==='true'||m==='false') return `<span class="j-bool">${m}</span>`;
+        if (m==='null')              return `<span class="j-null">${m}</span>`;
+        return `<span class="j-num">${m}</span>`;
+      }
+    );
+  }
+  function errIcon() {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
+      <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>`;
+  }
+
+  // ── Tab routing ────────────────────────────────────────────────────────────
+  const TAB_IDS = ['checker','pairing','labels','cards'];
+
+  function activateTab(id) {
+    if (!TAB_IDS.includes(id)) id = 'checker';
+    document.querySelectorAll('.tab-item').forEach(el =>
+      el.classList.toggle('active', el.dataset.tab === id));
+    document.querySelectorAll('.tab-content').forEach(el =>
+      el.classList.toggle('active', el.id === `tab-${id}`));
+  }
+
+  document.querySelectorAll('.tab-item').forEach(el =>
+    el.addEventListener('click', e => {
+      e.preventDefault();
+      const tab = el.dataset.tab;
+      history.replaceState(null, '', `#${tab}`);
+      activateTab(tab);
+    })
+  );
+
+  activateTab((location.hash.slice(1)) || 'checker');
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TAB 1 — SERIAL CHECKER
+  // ══════════════════════════════════════════════════════════════════════════
+  const scTags   = [];
+  let   scLastRows = [];
+
+  const scField = document.getElementById('sc-tag-field');
+  const scInput = document.getElementById('sc-input');
+  const scWrap  = document.getElementById('sc-results-wrap');
+  const scMeta  = document.getElementById('sc-results-meta');
+
+  scField.addEventListener('click', () => scInput.focus());
+
+  scInput.addEventListener('keydown', e => {
+    if ((e.metaKey||e.ctrlKey) && e.key==='Enter') { e.preventDefault(); scDoLookup(); return; }
+    if (e.key==='Enter'||e.key===','||e.key===' ') {
+      e.preventDefault();
+      if (scInput.value.trim()) scAddTags(scInput.value);
+    } else if (e.key==='Backspace' && scInput.value==='' && scTags.length) {
+      scRemoveTag(scTags.length-1);
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    const active = document.querySelector('.tab-content.active');
+    if (active?.id !== 'tab-checker') return;
+    if ((e.metaKey||e.ctrlKey) && e.key==='Enter') { e.preventDefault(); scDoLookup(); }
+  });
+
+  scInput.addEventListener('blur', () => { if (scInput.value.trim()) scAddTags(scInput.value); });
+
+  function scAddTags(raw) {
+    raw.split(/[\s,;]+/).map(s=>s.trim()).filter(s=>s&&!scTags.includes(s)).forEach(s=>scTags.push(s));
+    scInput.value = '';
+    scRenderTags();
+  }
+  function scRemoveTag(i) { scTags.splice(i,1); scRenderTags(); }
+  function scRenderTags() {
+    scField.querySelectorAll('.tag').forEach(el=>el.remove());
+    scTags.forEach((tag,i) => {
+      const span = document.createElement('span');
+      span.className = 'tag';
+      span.innerHTML = `${esc(tag)}<button class="tag-remove" title="Remove" data-i="${i}">×</button>`;
+      scField.insertBefore(span, scInput);
+    });
+    scField.querySelectorAll('.tag-remove').forEach(btn =>
+      btn.addEventListener('click', e => { e.stopPropagation(); scRemoveTag(Number(btn.dataset.i)); })
+    );
+  }
+  function scClearAll() {
+    scTags.length=0; scInput.value='';
+    scRenderTags(); scWrap.style.display='none'; scLastRows=[];
+    scInput.focus();
+  }
+
+  async function scDoLookup() {
+    if (scInput.value.trim()) scAddTags(scInput.value);
+    if (!scTags.length) {
+      scField.classList.add('shake');
+      scField.addEventListener('animationend', ()=>scField.classList.remove('shake'),{once:true});
+      scInput.focus(); return;
+    }
+    const btn   = document.getElementById('sc-lookup-btn');
+    const inner = document.getElementById('sc-btn-inner');
+    btn.disabled = true;
+    inner.innerHTML = '<span class="spinner"></span> Looking up…';
+    const t0 = Date.now();
+    try {
+      const res  = await fetch('/api/lookup-full', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ids:[...scTags]}),
+      });
+      const data = await res.json();
+      const ms   = Date.now()-t0;
+      if (!res.ok) scShowError(data.error??`HTTP ${res.status}`);
+      else { scMeta.textContent=`${ms} ms`; scShowResult(data); }
+    } catch(e) { scShowError(`Network error: ${e.message}`); }
+    btn.disabled=false; inner.textContent='Look Up';
+  }
+
+  const SC_STATUS = {
+    match:        {text:'✓ Match',           cls:'badge-match'},
+    mismatch:     {text:'≠ Abweichung',       cls:'badge-warn'},
+    paynless_only:{text:'→ fehlt in Rentman', cls:'badge-warn'},
+    rentman_only: {text:'nur Rentman',         cls:'badge-neutral'},
+    no_rentman:   {text:'nicht in Rentman',    cls:'badge-neutral'},
+    not_found:    {text:'—',                   cls:'badge-neutral'},
+  };
+  function scCanSave(s){return s==='mismatch'||s==='paynless_only';}
+
+  function scShowResult(data) {
+    scLastRows = data.rows??[];
+    const saveable   = scLastRows.filter(r=>scCanSave(r.status));
+    const matches    = scLastRows.filter(r=>r.status==='match').length;
+    const refBroken  = scLastRows.filter(r=>r.refMismatch).length;
+    const summaryText = data.rentmanAvailable
+      ? `<strong>${matches}</strong> von ${scLastRows.length} in Sync`
+      : `<strong>${scLastRows.length}</strong> Gerät${scLastRows.length!==1?'e':''} — <span style="color:var(--warn)">Rentman nicht verbunden</span>`;
+    const batchBtn = saveable.length>0
+      ? `<button class="icon-btn" id="sc-save-all-btn" onclick="scSaveAll()">Alle in Rentman (${saveable.length})</button>`:'';
+    const fixAllBtn = refBroken>0
+      ? `<button class="icon-btn" id="sc-fix-all-btn" onclick="scFixAllRefs()" style="color:var(--warn);border-color:var(--warn-border)">Refs korrigieren (${refBroken})</button>`:'';
+    const copyBtn = scLastRows.some(r=>r.paynlessSerial||r.rentmanSerial)
+      ? `<button class="icon-btn" id="sc-copy-btn" onclick="scCopyPaynless()">SNs kopieren</button>`:'';
+    const tbody = scLastRows.map((row,i)=>{
+      const {ref,paynlessSerial,rentmanSerial,rentmanId,rentmanRef,refMismatch,status}=row;
+      const badge=SC_STATUS[status]??SC_STATUS.not_found;
+      const saveBtn=scCanSave(status)&&rentmanId
+        ?`<button class="btn-save" id="sc-save-${i}" onclick="scSaveOne(${i})" title="Paynless SN in Rentman">↑ Rentman</button>`:'';
+      // Ref cell: show mismatch indicator if Rentman has a different ref
+      const refCell = refMismatch
+        ? `${esc(ref)} <span class="badge badge-warn" style="font-size:10px;padding:1px 5px" title="Rentman hat '${esc(rentmanRef)}' — klicken zum Korrigieren">Ref ≠</span>
+           <button class="btn-save" id="sc-fixref-${i}" onclick="scFixRef(${i})" style="margin-left:2px" title="'${esc(rentmanRef)}' → '${esc(ref)}' in Rentman">↑ Ref fix</button>`
+        : esc(ref);
+      return `<tr>
+        <td class="td-ref">${refCell}</td>
+        <td class="td-serial${paynlessSerial?'':' empty'}">${paynlessSerial?esc(paynlessSerial):'—'}</td>
+        <td class="td-serial${rentmanSerial?'':' empty'}">${rentmanSerial?esc(rentmanSerial):'—'}</td>
+        <td class="td-action"><span class="badge ${badge.cls}">${badge.text}</span>${saveBtn}</td>
+      </tr>`;
+    }).join('');
+    const rmHdr=data.rentmanAvailable?'Rentman SN':'Rentman SN <span style="opacity:.5;font-weight:400">(–)</span>';
+    document.getElementById('sc-result-body').innerHTML=`
+      <div class="result-table-wrap">
+        <div class="table-header">
+          <span class="table-summary">${summaryText}</span>
+          <div class="table-actions">${copyBtn}${fixAllBtn}${batchBtn}</div>
+        </div>
+        <table class="result-table">
+          <thead><tr><th>Unser Kürzel</th><th>Paynless SN</th><th>${rmHdr}</th><th>Status</th></tr></thead>
+          <tbody>${tbody}</tbody>
+        </table>
+      </div>
+      <details class="raw-json">
+        <summary>Raw JSON</summary>
+        <pre>${highlight(esc(JSON.stringify(data,null,2)))}</pre>
+      </details>`;
+    scWrap.style.display='block';
+    scWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
+  }
+
+  function scShowError(msg) {
+    scLastRows=[]; scMeta.textContent='';
+    document.getElementById('sc-result-body').innerHTML=
+      `<div class="error-box">${errIcon()}<span>${esc(msg)}</span></div>`;
+    scWrap.style.display='block';
+  }
+
+  async function scSaveOne(i) {
+    const row=scLastRows[i];
+    if(!row||!row.rentmanId||!row.paynlessSerial) return;
+    const btn=document.getElementById(`sc-save-${i}`);
+    btn.disabled=true; btn.textContent='…';
+    try {
+      const res=await fetch('/api/update-rentman',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({rentmanId:row.rentmanId,serial:row.paynlessSerial}),
+      });
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error);
+      row.rentmanSerial=data.updated.serial; row.status='match';
+      btn.textContent='✓ gespeichert'; btn.classList.add('saved');
+      scRefreshRow(i);
+    } catch(e) {
+      btn.disabled=false; btn.textContent='✗ Fehler';
+      setTimeout(()=>{btn.textContent='↑ Rentman';btn.disabled=false;},2500);
+    }
+  }
+  async function scSaveAll() {
+    const saveable=scLastRows.map((r,i)=>({...r,i})).filter(r=>scCanSave(r.status)&&r.rentmanId);
+    const btn=document.getElementById('sc-save-all-btn');
+    btn.disabled=true; btn.textContent=`Speichere ${saveable.length}…`;
+    await Promise.allSettled(saveable.map(r=>scSaveOne(r.i)));
+    btn.textContent='Fertig ✓'; btn.classList.add('ok');
+  }
+  function scRefreshRow(i) {
+    const row=scLastRows[i];
+    const badge=SC_STATUS[row.status]??SC_STATUS.not_found;
+    const tr=document.querySelector(`table.result-table tbody tr:nth-child(${i+1})`);
+    if(!tr) return;
+    tr.cells[2].textContent=row.rentmanSerial??'—';
+    tr.cells[2].className=`td-serial${row.rentmanSerial?'':' empty'}`;
+    tr.cells[3].innerHTML=`<span class="badge ${badge.cls}">${badge.text}</span>`;
+  }
+
+  async function scFixRef(i) {
+    const row=scLastRows[i];
+    if(!row?.rentmanId||!row.refMismatch) return;
+    const btn=document.getElementById(`sc-fixref-${i}`);
+    if(btn){btn.disabled=true;btn.textContent='…';}
+    try {
+      const res=await fetch('/api/fix-ref',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({rentmanId:row.rentmanId,correctRef:row.ref}),
+      });
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error);
+      // Clear mismatch state
+      row.rentmanRef=data.updated.ref;
+      row.refMismatch=false;
+      // Update ref cell in DOM
+      const tr=document.querySelector(`table.result-table tbody tr:nth-child(${i+1})`);
+      if(tr) tr.cells[0].innerHTML=esc(row.ref);
+      // Update "Refs korrigieren" batch button count
+      const remaining=scLastRows.filter(r=>r.refMismatch).length;
+      const fixAllBtn=document.getElementById('sc-fix-all-btn');
+      if(fixAllBtn){
+        if(remaining===0) fixAllBtn.remove();
+        else fixAllBtn.textContent=`Refs korrigieren (${remaining})`;
+      }
+    } catch(e) {
+      if(btn){btn.disabled=false;btn.textContent='✗ Fehler';}
+      setTimeout(()=>{if(btn){btn.textContent='↑ Ref fix';btn.disabled=false;}},2500);
+      console.error('Fix ref error:',e.message);
+    }
+  }
+
+  async function scFixAllRefs() {
+    const broken=scLastRows.map((r,i)=>({...r,i})).filter(r=>r.refMismatch&&r.rentmanId);
+    const btn=document.getElementById('sc-fix-all-btn');
+    if(btn){btn.disabled=true;btn.textContent=`Korrigiere ${broken.length}…`;}
+    await Promise.allSettled(broken.map(r=>scFixRef(r.i)));
+    if(btn&&btn.isConnected){btn.textContent='Fertig ✓';btn.classList.add('ok');}
+  }
+  async function scCopyPaynless() {
+    // Best available SN per row: Paynless first, Rentman as fallback
+    const serials=scLastRows.map(r=>r.paynlessSerial||r.rentmanSerial).filter(Boolean);
+    const btn=document.getElementById('sc-copy-btn');
+    try {
+      await navigator.clipboard.writeText(serials.join('\n'));
+      btn.textContent=`${serials.length} kopiert ✓`; btn.classList.add('ok');
+      setTimeout(()=>{btn.textContent='SNs kopieren';btn.classList.remove('ok');},2000);
+    } catch {
+      btn.textContent='Fehler';
+      setTimeout(()=>btn.textContent='SNs kopieren',2000);
+    }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TAB 2 — SERIAL PAIRING
+  // ══════════════════════════════════════════════════════════════════════════
+  const pairHistory = [];
+
+  const pairRef    = document.getElementById('pair-ref');
+  const pairVendor = document.getElementById('pair-vendor');
+
+  // Enter on Ref → jump to Vendor field
+  pairRef.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); pairVendor.focus(); pairVendor.select(); }
+  });
+
+  // Enter on Vendor → trigger push
+  pairVendor.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); pairPush(); }
+  });
+
+  // Focus Ref field when switching to this tab
+  document.querySelector('[data-tab="pairing"]').addEventListener('click', () =>
+    setTimeout(() => pairRef.focus(), 50)
+  );
+
+  function pairClear() {
+    pairRef.value = ''; pairVendor.value = '';
+    document.getElementById('pair-feedback').innerHTML = '';
+    pairRef.focus();
+  }
+
+  async function pairPush() {
+    const ref         = pairRef.value.trim();
+    const vendorSerial = pairVendor.value.trim();
+    const feedback    = document.getElementById('pair-feedback');
+
+    if (!ref || !vendorSerial) {
+      feedback.innerHTML = `<div class="error-box" style="margin-top:12px">${errIcon()}<span>Beide Felder ausfüllen.</span></div>`;
+      return;
+    }
+
+    const btn   = document.getElementById('pair-btn');
+    const inner = document.getElementById('pair-btn-inner');
+    btn.disabled = true;
+    inner.innerHTML = '<span class="spinner"></span> Pushe…';
+    feedback.innerHTML = '';
+
+    try {
+      const res  = await fetch('/api/serial-pair', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ ref, vendorSerial }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        feedback.innerHTML = `<div class="error-box" style="margin-top:12px">${errIcon()}<span>${esc(data.error)}</span></div>`;
+      } else {
+        // Add to history
+        pairHistory.unshift({ ref: data.ref, vendorSerial: data.vendorSerial, previous: data.previous, ts: new Date() });
+        pairRenderHistory();
+
+        if (data.refMismatch) {
+          // Show ref-correction prompt — don't auto-clear yet
+          feedback.innerHTML = `
+            <div class="success-box" style="margin-top:12px">
+              ✓ <strong>${esc(ref)}</strong> → <code>${esc(data.vendorSerial)}</code> gespeichert
+            </div>
+            <div style="margin-top:10px;padding:12px 16px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius-sm);font-size:13px;color:var(--warn);display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+              <span>⚠ Rentman hat Ref <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px">${esc(data.rentmanRef)}</code> statt <code style="background:var(--surface-2);padding:1px 5px;border-radius:3px">${esc(ref)}</code></span>
+              <button class="btn-save" id="pair-fix-btn" onclick="pairFixRef(${data.rentmanId},'${esc(ref)}')">↑ Ref korrigieren</button>
+              <button class="btn-ghost" style="padding:4px 10px;font-size:12px" onclick="pairClear()">Überspringen</button>
+            </div>`;
+        } else {
+          // Clean match — auto-clear quickly
+          feedback.innerHTML = `<div class="success-box" style="margin-top:12px">✓ <strong>${esc(ref)}</strong> → <code>${esc(data.vendorSerial)}</code> in Rentman gespeichert</div>`;
+          setTimeout(() => {
+            pairRef.value=''; pairVendor.value=''; feedback.innerHTML=''; pairRef.focus();
+          }, 1400);
+        }
+      }
+    } catch(e) {
+      feedback.innerHTML = `<div class="error-box" style="margin-top:12px">${errIcon()}<span>Netzwerkfehler: ${esc(e.message)}</span></div>`;
+    }
+
+    btn.disabled = false;
+    inner.textContent = '→ Nach Rentman pushen';
+  }
+
+  async function pairFixRef(rentmanId, correctRef) {
+    const btn = document.getElementById('pair-fix-btn');
+    if(btn){btn.disabled=true;btn.textContent='…';}
+    try {
+      const res=await fetch('/api/fix-ref',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({rentmanId,correctRef}),
+      });
+      const data=await res.json();
+      if(!res.ok) throw new Error(data.error);
+      // Replace the warn box with a final success line, then clear
+      document.getElementById('pair-feedback').innerHTML=
+        `<div class="success-box" style="margin-top:12px">✓ Vendor SN + Ref gespeichert — alles erledigt</div>`;
+      setTimeout(()=>{pairRef.value='';pairVendor.value='';document.getElementById('pair-feedback').innerHTML='';pairRef.focus();},1400);
+    } catch(e) {
+      if(btn){btn.disabled=false;btn.textContent='✗ Fehler: '+e.message;}
+    }
+  }
+
+  function pairRenderHistory() {
+    const hist = document.getElementById('pair-history');
+    const list = document.getElementById('pair-history-list');
+    hist.style.display = 'block';
+    list.innerHTML = pairHistory.slice(0, 12).map(h => {
+      const t = h.ts.toLocaleTimeString('de-DE', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+      const prev = h.previous ? `<span class="pr-prev">(war: ${esc(h.previous)})</span>` : '';
+      return `<div class="pair-row">
+        <span class="pr-ref">${esc(h.ref)}</span>
+        <span class="pr-arr">→</span>
+        <span class="pr-sn">${esc(h.vendorSerial)}</span>
+        ${prev}
+        <span class="pr-time">${t}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TAB 3 — GERÄTEAUFKLEBER
+  // ══════════════════════════════════════════════════════════════════════════
+  let lblMode = 'standard';
+
+  function lblSetMode(m) {
+    lblMode = m;
+    document.getElementById('lbl-mode-std').classList.toggle('active', m==='standard');
+    document.getElementById('lbl-mode-cus').classList.toggle('active', m==='custom');
+    document.getElementById('lbl-standard').style.display = m==='standard' ? '' : 'none';
+    document.getElementById('lbl-custom').style.display   = m==='custom'   ? '' : 'none';
+    document.getElementById('lbl-toast').style.display    = 'none';
+  }
+
+  // Custom mode: add / remove text lines
+  let lblLineCount = 1;
+  function lblAddLine() {
+    if (lblLineCount >= 3) return;
+    lblLineCount++;
+    const row = document.createElement('div');
+    row.className = 'custom-line-row';
+    row.innerHTML = `<input type="text" placeholder="Zeile ${lblLineCount}" class="lbl-line" autocomplete="off" />
+      <button class="btn-icon" onclick="lblRemoveLine(this)" title="Entfernen">−</button>`;
+    document.getElementById('lbl-lines').appendChild(row);
+    if (lblLineCount >= 3) document.getElementById('lbl-add-line-btn').disabled = true;
+  }
+  function lblRemoveLine(btn) {
+    btn.closest('.custom-line-row').remove();
+    lblLineCount--;
+    document.getElementById('lbl-add-line-btn').disabled = false;
+  }
+
+  async function lblPrint() {
+    const btn   = document.getElementById('lbl-print-btn');
+    const inner = document.getElementById('lbl-print-inner');
+    const toast = document.getElementById('lbl-toast');
+    btn.disabled = true;
+    inner.innerHTML = '<span class="spinner"></span> Drucken…';
+    toast.style.display = 'none';
+
+    let body;
+    if (lblMode === 'standard') {
+      const serialNumber = document.getElementById('lbl-serial').value;
+      const quantity     = parseInt(document.getElementById('lbl-qty-std').value)||1;
+      const printer      = document.getElementById('lbl-printer-std').value;
+      if (!serialNumber.trim()) { lblToast('error','Seriennummer eingeben.'); btn.disabled=false; inner.textContent='🖨 Drucken'; return; }
+      if (!printer)             { lblToast('error','Drucker auswählen.');      btn.disabled=false; inner.textContent='🖨 Drucken'; return; }
+      body = { mode:'label', serialNumber, quantity, printer };
+    } else {
+      const lines    = [...document.querySelectorAll('.lbl-line')].map(i=>i.value).filter(v=>v.trim());
+      const qrContent = document.getElementById('lbl-qr').value.trim() || null;
+      const quantity  = parseInt(document.getElementById('lbl-qty-cus').value)||1;
+      const printer   = document.getElementById('lbl-printer-cus').value;
+      if (!lines.length) { lblToast('error','Mindestens eine Textzeile eingeben.'); btn.disabled=false; inner.textContent='🖨 Drucken'; return; }
+      if (!printer)      { lblToast('error','Drucker auswählen.');                  btn.disabled=false; inner.textContent='🖨 Drucken'; return; }
+      body = { mode:'label', lines, qrContent, quantity, printer };
+    }
+
+    try {
+      const res  = await fetch('/api/print', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) lblToast('error', data.error ?? `HTTP ${res.status}`);
+      else lblToast('ok', `${data.count} Etikett${data.count!==1?'en':''} gesendet ✓`);
+    } catch(e) { lblToast('error', e.message); }
+
+    btn.disabled = false; inner.textContent = '🖨 Drucken';
+  }
+
+  function lblToast(type, msg) {
+    const t = document.getElementById('lbl-toast');
+    t.className = `print-toast ${type}`;
+    t.innerHTML = (type==='ok'?'✓ ':'✗ ') + esc(msg);
+    setTimeout(()=>{t.style.display='none';}, 4000);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // TAB 4 — GERÄTEKARTEN
+  // ══════════════════════════════════════════════════════════════════════════
+  const CARD_PRESETS = {
+    D2mini: '1 x Sunmi D2mini\n1 x Sunmi D2mini Netzteil\n1 x Stripe WisePad3\n1 x USB A ↔ USB C Kabel',
+    T2S:    '1 x Sunmi T2S\n1 x Sunmi T2S Netzteil',
+    V3Mix:  '1 x Sunmi V3 Mix\n1 x Sunmi V3 Mix Docking Station\n1 x Stripe WisePad3',
+  };
+  let cardSelectedType = null;
+
+  document.querySelectorAll('.preset-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.preset-chip').forEach(c=>c.classList.remove('active'));
+      chip.classList.add('active');
+      cardSelectedType = chip.dataset.type;
+      const customInput = document.getElementById('card-type-custom');
+      if (cardSelectedType === 'custom') {
+        customInput.style.display = '';
+        customInput.focus();
+      } else {
+        customInput.style.display = 'none';
+        if (CARD_PRESETS[cardSelectedType]) {
+          document.getElementById('card-acc').value = CARD_PRESETS[cardSelectedType];
+        }
+      }
+    });
+  });
+
+  async function cardPrint() {
+    const body = cardBuildBody();
+    if (!body) return;
+    const btn   = document.getElementById('card-print-btn');
+    const inner = document.getElementById('card-print-inner');
+    btn.disabled = true; inner.innerHTML = '<span class="spinner"></span> Drucken…';
+    try {
+      const res  = await fetch('/api/print',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const data = await res.json();
+      if (!res.ok) cardToast('error', data.error??`HTTP ${res.status}`);
+      else         cardToast('ok', `${data.count} Karte${data.count!==1?'n':''} gesendet ✓`);
+    } catch(e) { cardToast('error',e.message); }
+    btn.disabled=false; inner.textContent='🖨 Drucken';
+  }
+
+  async function cardPdf() {
+    const {serialNumber, productType, accessories} = cardBuildBody()||{};
+    if (!serialNumber) return;
+    const btn   = document.getElementById('card-pdf-btn');
+    const inner = document.getElementById('card-pdf-inner');
+    btn.disabled=true; inner.innerHTML='<span class="spinner-dark"></span> Generiere…';
+    try {
+      const res = await fetch('/api/generate-pdf',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({serialNumber,productType,accessories}),
+      });
+      if (!res.ok) {
+        const d=await res.json(); cardToast('error',d.error??`HTTP ${res.status}`);
+      } else {
+        const blob=await res.blob();
+        const url=URL.createObjectURL(blob);
+        const a=document.createElement('a');
+        a.href=url; a.download=`Geraetekarte_${serialNumber}.pdf`;
+        document.body.appendChild(a); a.click();
+        URL.revokeObjectURL(url); a.remove();
+        cardToast('ok','PDF heruntergeladen ✓');
+      }
+    } catch(e) { cardToast('error',e.message); }
+    btn.disabled=false; inner.textContent='⬇ PDF';
+  }
+
+  function cardBuildBody() {
+    const serialNumber = document.getElementById('card-serial').value.trim();
+    const productType  = cardSelectedType === 'custom'
+      ? document.getElementById('card-type-custom').value.trim()
+      : cardSelectedType;
+    const accessories  = document.getElementById('card-acc').value;
+    const quantity     = parseInt(document.getElementById('card-qty').value)||1;
+    const printer      = document.getElementById('card-printer').value;
+
+    if (!serialNumber)  { cardToast('error','Seriennummer eingeben.'); return null; }
+    if (!productType)   { cardToast('error','Produkttyp auswählen.');  return null; }
+    if (!printer && document.getElementById('card-print-btn').contains(document.activeElement)) {
+      cardToast('error','Drucker auswählen.'); return null;
+    }
+    return { mode:'card', serialNumber, productType, accessories, quantity, printer };
+  }
+
+  function cardToast(type, msg) {
+    const t = document.getElementById('card-toast');
+    t.className = `print-toast ${type}`;
+    t.innerHTML = (type==='ok'?'✓ ':'✗ ') + esc(msg);
+    setTimeout(()=>{t.style.display='none';},4000);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHARED — Printer list loader
+  // ══════════════════════════════════════════════════════════════════════════
+  async function loadPrinters() {
+    try {
+      const res  = await fetch('/api/printers');
+      const list = await res.json();
+      const selects = ['lbl-printer-std','lbl-printer-cus','card-printer'];
+      selects.forEach(id => {
+        const sel = document.getElementById(id);
+        sel.innerHTML = list.length
+          ? list.map(p=>`<option value="${esc(p)}">${esc(p)}</option>`).join('')
+          : '<option value="">Kein Drucker gefunden</option>';
+      });
+    } catch {
+      ['lbl-printer-std','lbl-printer-cus','card-printer'].forEach(id => {
+        document.getElementById(id).innerHTML = '<option value="">Fehler beim Laden</option>';
+      });
+    }
+  }
+  loadPrinters();
+  </script>
+</body>
+</html>
