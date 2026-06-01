@@ -1052,8 +1052,8 @@
     if(btn&&btn.isConnected){btn.textContent='Fertig ✓';btn.classList.add('ok');}
   }
   async function scCopyPaynless() {
-    // Best available SN per row: Paynless first, Rentman as fallback
-    const serials=scLastRows.map(r=>r.paynlessSerial||r.rentmanSerial).filter(Boolean);
+    // Rentman SN bevorzugt, Paynless als Fallback
+    const serials=scLastRows.map(r=>r.rentmanSerial||r.paynlessSerial).filter(Boolean);
     const btn=document.getElementById('sc-copy-btn');
     try {
       await navigator.clipboard.writeText(serials.join('\n'));
