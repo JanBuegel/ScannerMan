@@ -502,6 +502,21 @@
     }
     .preset-chip:hover { border-color: var(--primary); color: var(--primary); }
     .preset-chip.active { background: var(--tag-bg); color: var(--tag-fg); border-color: var(--primary); }
+
+    /* ── CSV Import ────────────────────────────────────────────────────────── */
+    .csv-drop {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px 24px; text-align: center; cursor: pointer;
+      transition: border-color .15s, background .15s;
+      background: var(--surface-2);
+    }
+    .csv-drop:hover, .csv-drop.drag-over {
+      border-color: var(--primary); background: var(--tag-bg);
+    }
+    .csv-drop-icon { font-size: 26px; margin-bottom: 8px; }
+    .csv-drop-text { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 4px; }
+    .csv-drop-hint { font-size: 12px; color: var(--text-xmuted); }
   </style>
 </head>
 <body>
@@ -566,28 +581,66 @@
     <p class="page-sub">Unsere SN scannen, Vendor SN scannen → direkt nach Rentman</p>
 
     <div class="card">
-      <div class="pair-inputs">
-        <div class="field">
-          <label class="field-label" for="pair-ref">Unsere SN (Ref)</label>
-          <input id="pair-ref" type="text"
-                 placeholder="z. B. L2s001"
-                 autocomplete="off" spellcheck="false"
-                 autocapitalize="off" />
+      <!-- Mode toggle -->
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="pair-mode-manual" onclick="pairSetMode('manual')">Manuell</button>
+        <button class="mode-btn" id="pair-mode-csv" onclick="pairSetMode('csv')">CSV Import</button>
+      </div>
+
+      <!-- Manual mode -->
+      <div id="pair-manual-section">
+        <div class="pair-inputs">
+          <div class="field">
+            <label class="field-label" for="pair-ref">Unsere SN (Ref)</label>
+            <input id="pair-ref" type="text"
+                   placeholder="z. B. L2s001"
+                   autocomplete="off" spellcheck="false"
+                   autocapitalize="off" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="pair-vendor">Vendor SN</label>
+            <input id="pair-vendor" type="text"
+                   placeholder="z. B. LB3621AW30272"
+                   autocomplete="off" spellcheck="false"
+                   autocapitalize="off" />
+          </div>
         </div>
-        <div class="field">
-          <label class="field-label" for="pair-vendor">Vendor SN</label>
-          <input id="pair-vendor" type="text"
-                 placeholder="z. B. LB3621AW30272"
-                 autocomplete="off" spellcheck="false"
-                 autocapitalize="off" />
+        <div id="pair-feedback"></div>
+        <div class="actions" style="margin-top:16px">
+          <button class="btn-primary" id="pair-btn" onclick="pairPush()">
+            <span id="pair-btn-inner">→ Nach Rentman pushen</span>
+          </button>
+          <button class="btn-ghost" onclick="pairClear()">Clear</button>
         </div>
       </div>
-      <div id="pair-feedback"></div>
-      <div class="actions" style="margin-top:16px">
-        <button class="btn-primary" id="pair-btn" onclick="pairPush()">
-          <span id="pair-btn-inner">→ Nach Rentman pushen</span>
-        </button>
-        <button class="btn-ghost" onclick="pairClear()">Clear</button>
+
+      <!-- CSV Import mode -->
+      <div id="pair-csv-section" style="display:none">
+        <div class="csv-drop" id="pair-csv-drop"
+             onclick="document.getElementById('pair-csv-file').click()">
+          <input type="file" id="pair-csv-file" accept=".csv,.txt" style="display:none" />
+          <div class="csv-drop-icon">📂</div>
+          <div class="csv-drop-text">CSV-Datei auswählen oder hier ablegen</div>
+          <div class="csv-drop-hint">Spalte 1 = Unsere SN · Spalte 2 = Vendor SN · Trennzeichen , oder ;</div>
+        </div>
+
+        <div id="pair-csv-preview" style="display:none;margin-top:18px">
+          <div class="results-bar">
+            <span class="results-label" id="pair-csv-count"></span>
+            <button class="icon-btn" onclick="pairCsvClear()">✕ Leeren</button>
+          </div>
+          <div class="result-table-wrap">
+            <table class="result-table" id="pair-csv-table">
+              <thead><tr><th>Unsere SN</th><th>Vendor SN</th><th>Status</th></tr></thead>
+              <tbody id="pair-csv-tbody"></tbody>
+            </table>
+          </div>
+          <div class="actions" style="margin-top:16px">
+            <button class="btn-primary" id="pair-csv-btn" onclick="pairCsvImport()">
+              <span id="pair-csv-btn-inner">→ Alle nach Rentman pushen</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1132,6 +1185,144 @@
         <span class="pr-time">${t}</span>
       </div>`;
     }).join('');
+  }
+
+  // ── Pairing mode toggle ────────────────────────────────────────────────────
+  let pairCurrentMode = 'manual';
+
+  function pairSetMode(m) {
+    pairCurrentMode = m;
+    document.getElementById('pair-mode-manual').classList.toggle('active', m === 'manual');
+    document.getElementById('pair-mode-csv').classList.toggle('active', m === 'csv');
+    document.getElementById('pair-manual-section').style.display = m === 'manual' ? '' : 'none';
+    document.getElementById('pair-csv-section').style.display   = m === 'csv'    ? '' : 'none';
+    if (m === 'manual') setTimeout(() => pairRef.focus(), 50);
+  }
+
+  // ── CSV Import ─────────────────────────────────────────────────────────────
+  let csvRows = [];
+
+  document.getElementById('pair-csv-file').addEventListener('change', e => {
+    if (e.target.files[0]) pairCsvLoad(e.target.files[0]);
+  });
+
+  const csvDropEl = document.getElementById('pair-csv-drop');
+  csvDropEl.addEventListener('dragover',  e => { e.preventDefault(); csvDropEl.classList.add('drag-over'); });
+  csvDropEl.addEventListener('dragleave', ()  => csvDropEl.classList.remove('drag-over'));
+  csvDropEl.addEventListener('drop', e => {
+    e.preventDefault();
+    csvDropEl.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) pairCsvLoad(e.dataTransfer.files[0]);
+  });
+
+  function pairCsvLoad(file) {
+    const reader = new FileReader();
+    reader.onload = ev => pairCsvParse(ev.target.result);
+    reader.readAsText(file, 'utf-8');
+  }
+
+  function pairCsvParse(text) {
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+
+    const sep = lines[0].includes(';') ? ';' : ',';
+
+    // Skip header row if first cell doesn't look like a serial
+    let start = 0;
+    const firstCell = lines[0].split(sep)[0].trim().toLowerCase().replace(/^["']|["']$/g, '');
+    if (/ref|sn|serial|unsere|vendor/.test(firstCell)) start = 1;
+
+    csvRows = [];
+    for (let i = start; i < lines.length; i++) {
+      const cols = lines[i].split(sep).map(c => c.trim().replace(/^["']|["']$/g, ''));
+      if (cols.length >= 2 && cols[0] && cols[1]) {
+        csvRows.push({ ref: cols[0], vendorSerial: cols[1], status: 'pending' });
+      }
+    }
+
+    pairCsvRenderTable();
+    const preview = document.getElementById('pair-csv-preview');
+    preview.style.display = csvRows.length ? 'block' : 'none';
+    document.getElementById('pair-csv-count').textContent =
+      `${csvRows.length} Zeile${csvRows.length !== 1 ? 'n' : ''}`;
+  }
+
+  function pairCsvRenderTable() {
+    document.getElementById('pair-csv-tbody').innerHTML = csvRows.map((row, i) =>
+      `<tr id="pair-csv-row-${i}">
+        <td class="td-ref">${esc(row.ref)}</td>
+        <td class="td-serial">${esc(row.vendorSerial)}</td>
+        <td class="td-action">${pairCsvBadge(row)}</td>
+      </tr>`
+    ).join('');
+  }
+
+  function pairCsvBadge(row) {
+    if (row.status === 'ok')      return '<span class="badge badge-match">✓ Gespeichert</span>';
+    if (row.status === 'pushing') return '<span class="badge badge-neutral" style="gap:6px"><span class="spinner-dark"></span>Pushe…</span>';
+    if (row.status === 'warn')    return `<span class="badge badge-warn">⚠ Ref ≠ ${esc(row.rentmanRef||'')}</span>`;
+    if (row.status === 'error')   return `<span class="badge badge-warn" title="${esc(row.error||'')}">✗ Fehler</span>`;
+    return '<span class="badge badge-neutral">–</span>';
+  }
+
+  function pairCsvUpdateRow(i) {
+    const tr = document.getElementById(`pair-csv-row-${i}`);
+    if (tr) tr.cells[2].innerHTML = pairCsvBadge(csvRows[i]);
+  }
+
+  function pairCsvClear() {
+    csvRows = [];
+    document.getElementById('pair-csv-preview').style.display = 'none';
+    document.getElementById('pair-csv-file').value = '';
+  }
+
+  async function pairCsvImport() {
+    const toProcess = csvRows.filter(r => r.status === 'pending' || r.status === 'error');
+    if (!toProcess.length) return;
+
+    const btn   = document.getElementById('pair-csv-btn');
+    const inner = document.getElementById('pair-csv-btn-inner');
+    btn.disabled = true;
+
+    let done = 0;
+    for (let i = 0; i < csvRows.length; i++) {
+      const row = csvRows[i];
+      if (row.status === 'ok') continue;
+
+      row.status = 'pushing';
+      pairCsvUpdateRow(i);
+      inner.innerHTML = `<span class="spinner"></span> ${done}/${toProcess.length} …`;
+
+      try {
+        const res  = await fetch('/api/serial-pair', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ref: row.ref, vendorSerial: row.vendorSerial }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          row.status = 'error';
+          row.error  = data.error || `HTTP ${res.status}`;
+        } else {
+          row.status     = data.refMismatch ? 'warn' : 'ok';
+          row.rentmanRef = data.rentmanRef;
+          pairHistory.unshift({ ref: data.ref, vendorSerial: data.vendorSerial, previous: data.previous, ts: new Date() });
+        }
+      } catch (e) {
+        row.status = 'error';
+        row.error  = e.message;
+      }
+
+      pairCsvUpdateRow(i);
+      done++;
+    }
+
+    pairRenderHistory();
+
+    const ok     = csvRows.filter(r => r.status === 'ok').length;
+    const warns  = csvRows.filter(r => r.status === 'warn').length;
+    const errors = csvRows.filter(r => r.status === 'error').length;
+    inner.textContent = `✓ ${ok} OK${warns  ? ` · ${warns} Ref-Abw.` : ''}${errors ? ` · ${errors} Fehler` : ''}`;
+    setTimeout(() => { btn.disabled = false; inner.textContent = '→ Alle nach Rentman pushen'; }, 3000);
   }
 
   // ══════════════════════════════════════════════════════════════════════════
