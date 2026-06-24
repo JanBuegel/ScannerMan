@@ -391,6 +391,29 @@
     .td-serial.empty { color: var(--text-xmuted); font-style: italic; }
     .td-action { width: 18%; }
 
+    /* ── Sunmi group column / batch move ───────────────────────────────────── */
+    .td-check  { width: 34px; text-align: center; }
+    .td-check input { cursor: pointer; }
+    .td-sunmi  { color: var(--text); }
+    .td-sunmi.empty { color: var(--text-xmuted); font-style: italic; }
+    .sunmi-dot {
+      display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+      margin-right: 6px; vertical-align: middle;
+    }
+    .sunmi-dot.on  { background: var(--ok); }
+    .sunmi-dot.off { background: var(--text-xmuted); }
+
+    .sunmi-move-bar {
+      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+      padding: 12px 16px; border-top: 1px solid var(--border);
+      background: var(--surface-2);
+    }
+    .sunmi-move-bar .smb-count { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+    .sunmi-move-bar .smb-count strong { color: var(--text); }
+    .sunmi-move-bar select { width: auto; flex: 1; min-width: 160px; }
+    .sunmi-move-bar .btn-save { padding: 7px 14px; font-size: 13px; }
+    .sunmi-move-bar .btn-save.saved { background: var(--ok-bg); color: var(--ok); border-color: var(--ok-border); }
+
     .badge {
       display: inline-flex; align-items: center; gap: 4px;
       font-size: 11px; font-weight: 600; border-radius: 4px; padding: 2px 7px;
@@ -832,6 +855,7 @@
   // ══════════════════════════════════════════════════════════════════════════
   const scTags   = [];
   let   scLastRows = [];
+  let   scGroupsCache = null;   // [{group_id, group_name, parent_group_id}]
 
   const scField = document.getElementById('sc-tag-field');
   const scInput = document.getElementById('sc-input');
@@ -931,6 +955,8 @@
       ? `<button class="icon-btn" id="sc-fix-all-btn" onclick="scFixAllRefs()" style="color:var(--warn);border-color:var(--warn-border)">Refs korrigieren (${refBroken})</button>`:'';
     const copyBtn = scLastRows.some(r=>r.paynlessSerial||r.rentmanSerial)
       ? `<button class="icon-btn" id="sc-copy-btn" onclick="scCopyPaynless()">SNs kopieren</button>`:'';
+    const sunmiOn  = !!data.sunmiAvailable;
+    const anySunmi = sunmiOn && scLastRows.some(r=>r.sunmiSn);
     const tbody = scLastRows.map((row,i)=>{
       const {ref,paynlessSerial,rentmanSerial,rentmanId,rentmanRef,refMismatch,status}=row;
       const badge=SC_STATUS[status]??SC_STATUS.not_found;
@@ -941,14 +967,30 @@
         ? `${esc(ref)} <span class="badge badge-warn" style="font-size:10px;padding:1px 5px" title="Rentman hat '${esc(rentmanRef)}' — klicken zum Korrigieren">Ref ≠</span>
            <button class="btn-save" id="sc-fixref-${i}" onclick="scFixRef(${i})" style="margin-left:2px" title="'${esc(rentmanRef)}' → '${esc(ref)}' in Rentman">↑ Ref fix</button>`
         : esc(ref);
+      const checkCell = sunmiOn
+        ? `<td class="td-check">${row.sunmiSn?`<input type="checkbox" class="sc-check" data-i="${i}">`:''}</td>`
+        : '';
+      const sunmiCell = sunmiOn ? scSunmiCell(row) : '';
       return `<tr>
+        ${checkCell}
         <td class="td-ref">${refCell}</td>
         <td class="td-serial${paynlessSerial?'':' empty'}">${paynlessSerial?esc(paynlessSerial):'—'}</td>
-        <td class="td-serial${rentmanSerial?'':' empty'}">${rentmanSerial?esc(rentmanSerial):'—'}</td>
+        <td class="td-serial td-rentman${rentmanSerial?'':' empty'}">${rentmanSerial?esc(rentmanSerial):'—'}</td>
+        ${sunmiCell}
         <td class="td-action"><span class="badge ${badge.cls}">${badge.text}</span>${saveBtn}</td>
       </tr>`;
     }).join('');
     const rmHdr=data.rentmanAvailable?'Rentman SN':'Rentman SN <span style="opacity:.5;font-weight:400">(–)</span>';
+    const checkHdr = sunmiOn ? `<th class="td-check"><input type="checkbox" id="sc-check-all" title="Alle auswählen"></th>` : '';
+    const sunmiHdr = sunmiOn ? `<th>Sunmi Gruppe</th>` : '';
+    const moveBar = anySunmi ? `
+        <div class="sunmi-move-bar">
+          <span class="smb-count"><strong id="sc-sel-count">0</strong> ausgewählt</span>
+          <select id="sc-group-select"><option value="">– Zielgruppe wählen –</option></select>
+          <button class="btn-save" id="sc-move-btn" onclick="scMoveGroup()" disabled>→ Gruppe ändern</button>
+          <button class="btn-save" id="sc-reboot-btn" onclick="scRebootSelected()" disabled
+                  style="background:var(--warn-bg);color:var(--warn);border-color:var(--warn-border)">↻ Neustart</button>
+        </div>` : '';
     document.getElementById('sc-result-body').innerHTML=`
       <div class="result-table-wrap">
         <div class="table-header">
@@ -956,15 +998,17 @@
           <div class="table-actions">${copyBtn}${fixAllBtn}${batchBtn}</div>
         </div>
         <table class="result-table">
-          <thead><tr><th>Unser Kürzel</th><th>Paynless SN</th><th>${rmHdr}</th><th>Status</th></tr></thead>
+          <thead><tr>${checkHdr}<th>Unser Kürzel</th><th>Paynless SN</th><th>${rmHdr}</th>${sunmiHdr}<th>Status</th></tr></thead>
           <tbody>${tbody}</tbody>
         </table>
+        ${moveBar}
       </div>
       <details class="raw-json">
         <summary>Raw JSON</summary>
         <pre>${highlight(esc(JSON.stringify(data,null,2)))}</pre>
       </details>`;
     scWrap.style.display='block';
+    if (anySunmi) scWireSunmi();
     scWrap.scrollIntoView({behavior:'smooth',block:'nearest'});
   }
 
@@ -1007,9 +1051,13 @@
     const badge=SC_STATUS[row.status]??SC_STATUS.not_found;
     const tr=document.querySelector(`table.result-table tbody tr:nth-child(${i+1})`);
     if(!tr) return;
-    tr.cells[2].textContent=row.rentmanSerial??'—';
-    tr.cells[2].className=`td-serial${row.rentmanSerial?'':' empty'}`;
-    tr.cells[3].innerHTML=`<span class="badge ${badge.cls}">${badge.text}</span>`;
+    const rm=tr.querySelector('.td-rentman');
+    if(rm){
+      rm.textContent=row.rentmanSerial??'—';
+      rm.className=`td-serial td-rentman${row.rentmanSerial?'':' empty'}`;
+    }
+    const act=tr.querySelector('.td-action');
+    if(act) act.innerHTML=`<span class="badge ${badge.cls}">${badge.text}</span>`;
   }
 
   async function scFixRef(i) {
@@ -1029,7 +1077,8 @@
       row.refMismatch=false;
       // Update ref cell in DOM
       const tr=document.querySelector(`table.result-table tbody tr:nth-child(${i+1})`);
-      if(tr) tr.cells[0].innerHTML=esc(row.ref);
+      const refCell=tr?.querySelector('.td-ref');
+      if(refCell) refCell.innerHTML=esc(row.ref);
       // Update "Refs korrigieren" batch button count
       const remaining=scLastRows.filter(r=>r.refMismatch).length;
       const fixAllBtn=document.getElementById('sc-fix-all-btn');
@@ -1054,14 +1103,190 @@
   async function scCopyPaynless() {
     // Rentman SN bevorzugt, Paynless als Fallback
     const serials=scLastRows.map(r=>r.rentmanSerial||r.paynlessSerial).filter(Boolean);
+    const text=serials.join('\n');
     const btn=document.getElementById('sc-copy-btn');
-    try {
-      await navigator.clipboard.writeText(serials.join('\n'));
+    console.log('[scCopyPaynless] rows:',scLastRows.length,'serials:',serials.length,serials);
+    console.log('[scCopyPaynless] isSecureContext:',window.isSecureContext,'navigator.clipboard:',!!navigator.clipboard);
+
+    const ok=()=>{
       btn.textContent=`${serials.length} kopiert ✓`; btn.classList.add('ok');
       setTimeout(()=>{btn.textContent='SNs kopieren';btn.classList.remove('ok');},2000);
-    } catch {
+    };
+    const fail=(err)=>{
+      console.error('[scCopyPaynless] copy failed:',err);
       btn.textContent='Fehler';
-      setTimeout(()=>btn.textContent='SNs kopieren',2000);
+      setTimeout(()=>{btn.textContent='SNs kopieren';},2000);
+    };
+
+    // Primär: Async Clipboard API (nur in secure context / localhost verfügbar)
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(text);
+        console.log('[scCopyPaynless] copied via navigator.clipboard');
+        return ok();
+      } catch(e) {
+        console.warn('[scCopyPaynless] navigator.clipboard failed, falling back to execCommand:',e);
+      }
+    } else {
+      console.warn('[scCopyPaynless] navigator.clipboard not available (kein secure context?) — execCommand-Fallback');
+    }
+
+    // Fallback: textarea + execCommand('copy') für HTTP/LAN-Zugriff
+    try {
+      const ta=document.createElement('textarea');
+      ta.value=text;
+      ta.setAttribute('readonly','');
+      ta.style.cssText='position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);
+      ta.focus(); ta.select();
+      ta.setSelectionRange(0, text.length);
+      const success=document.execCommand('copy');
+      document.body.removeChild(ta);
+      console.log('[scCopyPaynless] execCommand copy result:',success);
+      success ? ok() : fail('execCommand returned false');
+    } catch(e) {
+      fail(e);
+    }
+  }
+
+  // ── Sunmi: group column + batch move ────────────────────────────────────────
+  function scSunmiCell(row) {
+    if (!row.sunmiSn) return `<td class="td-sunmi empty">—</td>`;
+    const dot = `<span class="sunmi-dot ${row.sunmiOnline?'on':'off'}" title="${row.sunmiOnline?'online':'offline'}"></span>`;
+    const name = row.sunmiGroupName
+      ? esc(row.sunmiGroupName)
+      : `<span style="color:var(--text-xmuted)">(keine Gruppe)</span>`;
+    return `<td class="td-sunmi" title="SN: ${esc(row.sunmiSn)}">${dot}${name}</td>`;
+  }
+
+  function scWireSunmi() {
+    document.querySelectorAll('.sc-check').forEach(cb =>
+      cb.addEventListener('change', scUpdateSel));
+    const all = document.getElementById('sc-check-all');
+    if (all) all.addEventListener('change', () => {
+      document.querySelectorAll('.sc-check').forEach(cb => { cb.checked = all.checked; });
+      scUpdateSel();
+    });
+    const sel = document.getElementById('sc-group-select');
+    if (sel) sel.addEventListener('change', scUpdateSel);
+    scLoadGroups();
+    scUpdateSel();
+  }
+
+  function scSelectedSns() {
+    return [...document.querySelectorAll('.sc-check:checked')]
+      .map(cb => scLastRows[Number(cb.dataset.i)]?.sunmiSn)
+      .filter(Boolean);
+  }
+
+  function scUpdateSel() {
+    const n = scSelectedSns().length;
+    const countEl = document.getElementById('sc-sel-count');
+    if (countEl) countEl.textContent = n;
+    const sel = document.getElementById('sc-group-select');
+    const btn = document.getElementById('sc-move-btn');
+    if (btn) btn.disabled = !(n > 0 && sel && sel.value);
+    const rb = document.getElementById('sc-reboot-btn');
+    if (rb) rb.disabled = !(n > 0);
+  }
+
+  async function scLoadGroups() {
+    const sel = document.getElementById('sc-group-select');
+    if (!sel) return;
+    try {
+      if (!scGroupsCache) {
+        const res = await fetch('/api/sunmi/groups');
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+        scGroupsCache = data.groups ?? [];
+      }
+      // Order top-level groups first, then their children (light indentation).
+      const byParent = {};
+      scGroupsCache.forEach(g => { (byParent[g.parent_group_id] ??= []).push(g); });
+      const opts = ['<option value="">– Zielgruppe wählen –</option>'];
+      const walk = (parentId, depth) => {
+        (byParent[parentId] ?? []).forEach(g => {
+          const pad = '  '.repeat(depth);
+          opts.push(`<option value="${g.group_id}">${pad}${esc(g.group_name)}</option>`);
+          walk(g.group_id, depth + 1);
+        });
+      };
+      walk(0, 0);
+      // Any groups whose parent chain wasn't reached (orphans) — append flat.
+      scGroupsCache.filter(g => !opts.some(o => o.includes(`value="${g.group_id}"`)))
+        .forEach(g => opts.push(`<option value="${g.group_id}">${esc(g.group_name)}</option>`));
+      sel.innerHTML = opts.join('');
+    } catch (e) {
+      sel.innerHTML = `<option value="">Fehler: ${esc(e.message)}</option>`;
+    }
+    scUpdateSel();
+  }
+
+  async function scMoveGroup() {
+    const sel = document.getElementById('sc-group-select');
+    const btn = document.getElementById('sc-move-btn');
+    const groupId = Number(sel?.value);
+    const checked = [...document.querySelectorAll('.sc-check:checked')];
+    const sns = checked.map(cb => scLastRows[Number(cb.dataset.i)]?.sunmiSn).filter(Boolean);
+    if (!groupId || !sns.length) return;
+
+    const groupName = scGroupsCache?.find(g => g.group_id === groupId)?.group_name ?? null;
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = `Verschiebe ${sns.length}…`;
+    try {
+      const res = await fetch('/api/sunmi/move-group', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ groupId, sns }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      // Update the moved rows locally + redraw their Sunmi cell, then uncheck.
+      checked.forEach(cb => {
+        const i = Number(cb.dataset.i);
+        const row = scLastRows[i];
+        if (!row) return;
+        row.sunmiGroupId = groupId;
+        row.sunmiGroupName = groupName;
+        const tr = document.querySelector(`table.result-table tbody tr:nth-child(${i+1})`);
+        const cell = tr?.querySelector('.td-sunmi');
+        if (cell) cell.outerHTML = scSunmiCell(row);
+        cb.checked = false;
+      });
+      const all = document.getElementById('sc-check-all');
+      if (all) all.checked = false;
+      btn.textContent = '✓ verschoben';
+      btn.classList.add('saved');
+      setTimeout(() => { btn.textContent = origText; btn.classList.remove('saved'); scUpdateSel(); }, 2000);
+    } catch (e) {
+      btn.textContent = '✗ Fehler';
+      console.error('Move group error:', e.message);
+      setTimeout(() => { btn.textContent = origText; scUpdateSel(); }, 2800);
+    }
+  }
+
+  async function scRebootSelected() {
+    const btn = document.getElementById('sc-reboot-btn');
+    const sns = scSelectedSns();
+    if (!sns.length) return;
+    if (!confirm(`${sns.length} Gerät${sns.length!==1?'e':''} jetzt neu starten?\n\n${sns.join('\n')}`)) return;
+
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = `Starte ${sns.length} neu…`;
+    try {
+      const res = await fetch('/api/sunmi/reboot', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ sns }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      btn.textContent = '✓ Neustart gesendet';
+      setTimeout(() => { btn.textContent = origText; scUpdateSel(); }, 2500);
+    } catch (e) {
+      btn.textContent = '✗ Fehler';
+      console.error('Reboot error:', e.message);
+      setTimeout(() => { btn.textContent = origText; scUpdateSel(); }, 2800);
     }
   }
 

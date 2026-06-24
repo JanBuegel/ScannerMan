@@ -13,10 +13,13 @@ import { join, dirname, extname, resolve }  from 'path';
 import { exec, spawn }                      from 'child_process';
 import { promisify }                        from 'util';
 
-import { loadApiKey, tryLoadRentmanToken }  from '../lib/config.js';
+import { loadApiKey, tryLoadRentmanToken,
+         tryLoadSunmiCreds }                from '../lib/config.js';
 import { lookupDevices }                                          from '../lib/api.js';
 import { lookupByRef, lookupByRefWithFallback,
          updateSerial, updateRef }                               from '../lib/rentman.js';
+import { getDeviceInfoBySnList, listGroups,
+         moveDeviceToGroup, rebootDevices } from '../lib/sunmi.js';
 import { generateLabelZPL, generateCardZPL,
          expandSerials }                    from '../lib/zpl.js';
 
@@ -98,6 +101,13 @@ export function startServer() {
     console.warn('  ⚠  RENTMAN_API_TOKEN not set — Rentman features disabled.\n');
   }
 
+  const sunmiCreds     = tryLoadSunmiCreds();
+  const sunmiAvailable = Boolean(sunmiCreds);
+
+  if (!sunmiAvailable) {
+    console.warn('  ⚠  SUNMI_APP_ID/SUNMI_APP_KEY not set — Sunmi features disabled.\n');
+  }
+
   // Lazy-load heavy PDF deps only when first needed
   let _pdfLib = null, _qrcode = null;
   async function getPdfDeps() {
@@ -153,10 +163,37 @@ export function startServer() {
             rentmanSerial: rentmanEntry?.serial  ?? null,
             refMismatch:   refMismatch ?? false,
             status: rowStatus(paynlessSerial, rentmanEntry),
+            // Sunmi fields — filled in below (the resolved serial IS the Sunmi SN)
+            sunmiSn:        null,
+            sunmiGroupId:   null,
+            sunmiGroupName: null,
+            sunmiOnline:    null,
           };
         });
 
-        return json(res, 200, { rows, rentmanAvailable });
+        // ── enrich with Sunmi group / online status ─────────────────────────
+        // The canonical device serial (Rentman preferred, Paynless fallback) is
+        // the Sunmi S/N. Failures here never break the lookup.
+        if (sunmiCreds) {
+          try {
+            const serialOf = (r) => r.rentmanSerial || r.paynlessSerial || null;
+            const sns = [...new Set(rows.map(serialOf).filter(Boolean))];
+            const info = await getDeviceInfoBySnList(sns, sunmiCreds);
+            const bySn = new Map(info.map(d => [d.sn, d]));
+            for (const r of rows) {
+              const d = bySn.get(serialOf(r));
+              if (!d) continue;
+              r.sunmiSn        = d.sn;
+              r.sunmiGroupId   = d.group_id   ?? null;
+              r.sunmiGroupName = d.group_name ?? null;
+              r.sunmiOnline    = d.online_status === 1;
+            }
+          } catch (e) {
+            console.warn(`  ⚠  Sunmi lookup failed: ${e.message}`);
+          }
+        }
+
+        return json(res, 200, { rows, rentmanAvailable, sunmiAvailable });
       } catch (e) {
         return json(res, 502, { error: e.message });
       }
@@ -240,6 +277,64 @@ export function startServer() {
           previous,
           refMismatch,
         });
+      } catch (e) {
+        return json(res, 502, { error: e.message });
+      }
+    }
+
+    // ── GET /api/sunmi/groups ─────────────────────────────────────────────────
+    // Returns the full account-wide list of device groups for the dropdown.
+    if (method === 'GET' && url === '/api/sunmi/groups') {
+      if (!sunmiCreds)
+        return json(res, 503, { error: 'SUNMI_APP_ID/SUNMI_APP_KEY not configured' });
+      try {
+        const groups = await listGroups(sunmiCreds);
+        return json(res, 200, { groups });
+      } catch (e) {
+        return json(res, 502, { error: e.message });
+      }
+    }
+
+    // ── POST /api/sunmi/move-group ────────────────────────────────────────────
+    // Body: { groupId: number, sns: string[] }  → moves devices into the group.
+    if (method === 'POST' && url === '/api/sunmi/move-group') {
+      if (!sunmiCreds)
+        return json(res, 503, { error: 'SUNMI_APP_ID/SUNMI_APP_KEY not configured' });
+
+      let body;
+      try { body = JSON.parse(await readBody(req)); }
+      catch { return json(res, 400, { error: 'Invalid JSON body' }); }
+
+      const groupId = Number(body?.groupId);
+      const sns     = body?.sns;
+      if (!Number.isFinite(groupId) || !Array.isArray(sns) || sns.length === 0)
+        return json(res, 400, { error: '`groupId` (number) and non-empty `sns` are required' });
+
+      try {
+        await moveDeviceToGroup(groupId, sns, sunmiCreds);
+        return json(res, 200, { moved: sns.length, groupId });
+      } catch (e) {
+        return json(res, 502, { error: e.message });
+      }
+    }
+
+    // ── POST /api/sunmi/reboot ────────────────────────────────────────────────
+    // Body: { sns: string[] }  → reboots the given devices.
+    if (method === 'POST' && url === '/api/sunmi/reboot') {
+      if (!sunmiCreds)
+        return json(res, 503, { error: 'SUNMI_APP_ID/SUNMI_APP_KEY not configured' });
+
+      let body;
+      try { body = JSON.parse(await readBody(req)); }
+      catch { return json(res, 400, { error: 'Invalid JSON body' }); }
+
+      const sns = body?.sns;
+      if (!Array.isArray(sns) || sns.length === 0)
+        return json(res, 400, { error: 'non-empty `sns` is required' });
+
+      try {
+        await rebootDevices(sns, sunmiCreds);
+        return json(res, 200, { rebooted: sns.length });
       } catch (e) {
         return json(res, 502, { error: e.message });
       }
@@ -433,6 +528,7 @@ export function startServer() {
   ──────────────────────────────────────
   http://localhost:${PORT}
   Rentman: ${rentmanAvailable ? '✓ verbunden' : '✗ kein Token'}
+  Sunmi:   ${sunmiAvailable ? '✓ verbunden' : '✗ keine Keys'}
   ──────────────────────────────────────
   Ctrl-C zum Beenden
 `);
