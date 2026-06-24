@@ -545,8 +545,10 @@
 <body>
 
   <!-- ── App header ──────────────────────────────────────────────────────────── -->
-  <div class="app-header">
+  <div class="app-header" style="position:relative">
     <div class="app-title">Scanner<span>Man</span></div>
+    <button class="btn-ghost" onclick="doLogout()" title="Abmelden"
+            style="position:absolute;right:24px;top:14px;padding:6px 12px;font-size:12px">Abmelden</button>
   </div>
 
   <!-- ── Tab navigation ─────────────────────────────────────────────────────── -->
@@ -826,6 +828,12 @@
       <circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.5"/>
       <path d="M8 5v3.5M8 10.5v.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
     </svg>`;
+  }
+
+  // ── Logout ───────────────────────────────────────────────────────────────
+  async function doLogout() {
+    try { await fetch('/api/logout', { method:'POST' }); } catch {}
+    location.href = '/login';
   }
 
   // ── Tab routing ────────────────────────────────────────────────────────────

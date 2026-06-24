@@ -14,7 +14,9 @@ import { exec, spawn }                      from 'child_process';
 import { promisify }                        from 'util';
 
 import { loadApiKey, tryLoadRentmanToken,
-         tryLoadSunmiCreds }                from '../lib/config.js';
+         tryLoadSunmiCreds, loadAuthConfig } from '../lib/config.js';
+import { verifyPassword, createSessionToken, verifySessionToken,
+         parseCookies, serializeCookie }    from '../lib/auth.js';
 import { lookupDevices }                                          from '../lib/api.js';
 import { lookupByRef, lookupByRefWithFallback,
          updateSerial, updateRef }                               from '../lib/rentman.js';
@@ -88,10 +90,102 @@ async function printZPL(zpl, printerName) {
 
 function safeUnlink(f) { try { unlinkSync(f); } catch {} }
 
+// ── login page ──────────────────────────────────────────────────────────────
+function serveLoginPage(res) {
+  const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScannerMan — Anmelden</title>
+  <style>
+    :root {
+      --bg:#f4f6fb; --surface:#fff; --border:#dde1ee; --text:#1a1d2e;
+      --muted:#6b7280; --primary:#6366f1; --primary-dark:#4f46e5;
+      --err-bg:#fff1f2; --err-border:#fecdd3; --err:#e11d48;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#0c0e1a; --surface:#141828; --border:#272c4a; --text:#e2e8f0;
+              --muted:#94a3b8; --primary:#818cf8; --primary-dark:#6366f1;
+              --err-bg:#1c0a10; --err-border:#9f1239; --err:#fb7185; }
+    }
+    * { box-sizing:border-box; margin:0; padding:0; }
+    body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+           background:var(--bg); color:var(--text); min-height:100vh;
+           display:flex; align-items:center; justify-content:center; padding:24px; }
+    .card { background:var(--surface); border:1px solid var(--border);
+            border-radius:12px; box-shadow:0 6px 24px rgba(0,0,0,.08);
+            padding:32px 28px; width:100%; max-width:360px; }
+    .title { font-size:22px; font-weight:800; letter-spacing:-.4px; text-align:center; margin-bottom:4px; }
+    .title span { color:var(--primary); }
+    .sub { font-size:13px; color:var(--muted); text-align:center; margin-bottom:24px; }
+    label { display:block; font-size:11px; font-weight:700; text-transform:uppercase;
+            letter-spacing:.08em; color:var(--muted); margin-bottom:7px; }
+    input { width:100%; background:var(--surface); border:1.5px solid var(--border);
+            border-radius:6px; padding:10px 12px; color:var(--text); font-size:15px; outline:none; }
+    input:focus { border-color:var(--primary); box-shadow:0 0 0 3px color-mix(in srgb,var(--primary) 18%,transparent); }
+    button { width:100%; margin-top:18px; background:var(--primary); color:#fff; border:none;
+             border-radius:6px; padding:11px; font-size:15px; font-weight:600; cursor:pointer;
+             transition:background .15s; }
+    button:hover:not(:disabled) { background:var(--primary-dark); }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .err { display:none; margin-top:16px; background:var(--err-bg); border:1px solid var(--err-border);
+           color:var(--err); border-radius:6px; padding:10px 12px; font-size:13px; }
+  </style>
+</head>
+<body>
+  <form class="card" id="form" autocomplete="off">
+    <div class="title">Scanner<span>Man</span></div>
+    <div class="sub">Bitte anmelden</div>
+    <label for="pw">Passwort</label>
+    <input id="pw" type="password" autocomplete="current-password" autofocus />
+    <button type="submit" id="btn">Anmelden</button>
+    <div class="err" id="err"></div>
+  </form>
+  <script>
+    const form = document.getElementById('form');
+    const pw   = document.getElementById('pw');
+    const btn  = document.getElementById('btn');
+    const err  = document.getElementById('err');
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.style.display = 'none';
+      btn.disabled = true; btn.textContent = 'Anmelden…';
+      try {
+        const res = await fetch('/api/login', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ password: pw.value }),
+        });
+        if (res.ok) { location.href = '/'; return; }
+        const data = await res.json().catch(() => ({}));
+        err.textContent = data.error || 'Anmeldung fehlgeschlagen';
+        err.style.display = 'block';
+      } catch (e) {
+        err.textContent = 'Netzwerkfehler';
+        err.style.display = 'block';
+      }
+      btn.disabled = false; btn.textContent = 'Anmelden';
+      pw.value = ''; pw.focus();
+    });
+  </script>
+</body>
+</html>`;
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(html);
+}
+
 // ── server factory ────────────────────────────────────────────────────────────
+const SESSION_TTL = 7 * 24 * 60 * 60;   // 7 days
+const COOKIE_NAME = 'sid';
+
 export function startServer() {
   let apiKey;
   try { apiKey = loadApiKey(); }
+  catch (e) { console.error(`\nError: ${e.message}\n`); process.exit(1); }
+
+  // Auth is mandatory — fail closed if not configured.
+  let auth;
+  try { auth = loadAuthConfig(); }
   catch (e) { console.error(`\nError: ${e.message}\n`); process.exit(1); }
 
   const rentmanToken     = tryLoadRentmanToken();
@@ -121,6 +215,45 @@ export function startServer() {
   const server = createServer(async (req, res) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     const { method, url } = req;
+    const path = url.split('?')[0];
+
+    // ── Authentication gate ────────────────────────────────────────────────────
+    const cookies = parseCookies(req.headers.cookie);
+    const authed  = verifySessionToken(cookies[COOKIE_NAME], auth.sessionSecret);
+
+    // POST /api/login — verify password, issue session cookie
+    if (method === 'POST' && path === '/api/login') {
+      let body;
+      try { body = JSON.parse(await readBody(req)); }
+      catch { return json(res, 400, { error: 'Invalid JSON body' }); }
+
+      if (!verifyPassword(body?.password, auth.passwordHash)) {
+        await new Promise(r => setTimeout(r, 400));   // slow down brute-force
+        return json(res, 401, { error: 'Falsches Passwort' });
+      }
+      const token = createSessionToken(auth.sessionSecret, SESSION_TTL);
+      res.setHeader('Set-Cookie', serializeCookie(COOKIE_NAME, token, SESSION_TTL));
+      return json(res, 200, { ok: true });
+    }
+
+    // POST /api/logout — clear cookie
+    if (method === 'POST' && path === '/api/logout') {
+      res.setHeader('Set-Cookie', serializeCookie(COOKIE_NAME, '', 0));
+      return json(res, 200, { ok: true });
+    }
+
+    // GET /login — login page (redirect to app if already authed)
+    if (method === 'GET' && path === '/login') {
+      if (authed) { res.writeHead(302, { Location: '/' }); return res.end(); }
+      return serveLoginPage(res);
+    }
+
+    // Everything else requires a valid session.
+    if (!authed) {
+      if (path.startsWith('/api/')) return json(res, 401, { error: 'Not authenticated' });
+      res.writeHead(302, { Location: '/login' });
+      return res.end();
+    }
 
     // ── GET /api/printers ─────────────────────────────────────────────────────
     if (method === 'GET' && url === '/api/printers') {
