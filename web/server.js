@@ -6,31 +6,32 @@
  */
 
 import { createServer }                    from 'http';
-import { readFileSync, writeFileSync,
-         unlinkSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync }                     from 'fs';
 import { fileURLToPath }                    from 'url';
 import { join, dirname, extname, resolve }  from 'path';
-import { exec, spawn }                      from 'child_process';
-import { promisify }                        from 'util';
 
 import { loadApiKey, tryLoadRentmanToken,
-         tryLoadSunmiCreds, loadAuthConfig } from '../lib/config.js';
+         tryLoadSunmiCreds, loadAuthConfig,
+         tryLoadPrintAgentToken }           from '../lib/config.js';
 import { verifyPassword, createSessionToken, verifySessionToken,
          parseCookies, serializeCookie }    from '../lib/auth.js';
 import { lookupDevices }                                          from '../lib/api.js';
-import { lookupByRef, lookupByRefWithFallback,
+import { lookupByRef, lookupByRefWithFallback, lookupBySerial,
          updateSerial, updateRef }                               from '../lib/rentman.js';
 import { getDeviceInfoBySnList, listGroups,
          moveDeviceToGroup, rebootDevices } from '../lib/sunmi.js';
 import { generateLabelZPL, generateCardZPL,
          expandSerials }                    from '../lib/zpl.js';
 
-const execAsync  = promisify(exec);
 const __dirname  = dirname(fileURLToPath(import.meta.url));
 const PUBLIC     = join(__dirname, 'public');
-const TMP        = join(__dirname, '..', 'tmp');
 const LOGO_PATH  = join(PUBLIC, 'images', 'Logo_teamtoaster_full.png');
 const PORT       = Number(process.env.PORT) || 3000;
+
+// ── Print bridge tuning ───────────────────────────────────────────────────────
+const AGENT_POLL_MS  = 25_000;   // how long the agent's job long-poll is held open
+const JOB_TIMEOUT_MS = 30_000;   // how long a browser waits for a print result
+const AGENT_STALE_MS = 60_000;   // roster older than this ⇒ agent considered offline
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -71,24 +72,81 @@ function rowStatus(paynlessSerial, rentmanEntry) {
   return 'not_found';
 }
 
-// Send a ZPL file to a CUPS printer
-async function printZPL(zpl, printerName) {
-  if (!existsSync(TMP)) mkdirSync(TMP, { recursive: true });
-  const tmpFile = join(TMP, `label_${Date.now()}.zpl`);
-  writeFileSync(tmpFile, zpl, 'utf8');
+// ── Print bridge ──────────────────────────────────────────────────────────────
+// The real printers live on a LAN box (the "NUC") running agent/print-agent.js.
+// That agent authenticates with PRINT_AGENT_TOKEN, reports its CUPS printer list,
+// and long-polls for jobs — so the browser only ever talks to this (HTTPS) server
+// and never needs to reach the NUC directly. Single agent for now; all state is
+// in-memory (a restart just means the agent re-registers on its next poll).
+const printBridge = {
+  roster:  { printers: [], at: 0 },   // last printer list the agent reported
+  queue:   [],                        // jobs awaiting pickup: {id, zpl, printer}
+  waiters: new Map(),                 // jobId → {resolve, reject, timer} for the browser
+  poll:    null,                      // parked agent long-poll: a finish(job|null) fn
+  seq:     0,
 
-  return new Promise((resolve, reject) => {
-    const proc = spawn('lpr', ['-o', 'raw', '-P', printerName, tmpFile]);
-    proc.on('error', err => { safeUnlink(tmpFile); reject(err); });
-    proc.on('exit',  code => {
-      safeUnlink(tmpFile);
-      if (code === 0) resolve();
-      else reject(new Error(`lpr exited with code ${code}`));
+  agentOnline() { return Date.now() - this.roster.at < AGENT_STALE_MS; },
+
+  setRoster(printers) {
+    this.roster = { printers: Array.isArray(printers) ? printers : [], at: Date.now() };
+  },
+
+  // Browser side: enqueue a job, resolve once the agent reports its result.
+  submit(zpl, printer) {
+    const id = `job_${Date.now()}_${++this.seq}`;
+    const done = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.waiters.delete(id);
+        const i = this.queue.findIndex(j => j.id === id);
+        if (i >= 0) this.queue.splice(i, 1);
+        reject(new Error('Druck-Agent hat nicht rechtzeitig geantwortet'));
+      }, JOB_TIMEOUT_MS);
+      this.waiters.set(id, { resolve, reject, timer });
     });
-  });
-}
+    this.queue.push({ id, zpl, printer });
+    this._flush();   // hand it over immediately if the agent is waiting
+    return done;
+  },
 
-function safeUnlink(f) { try { unlinkSync(f); } catch {} }
+  // Agent side: return the next job now, or park the poll until one arrives.
+  takeJob() {
+    const job = this.queue.shift();
+    if (job) return Promise.resolve(job);
+    return new Promise((resolve) => {
+      if (this.poll) this.poll(null);   // release any stale poll (single agent)
+      let settled = false;
+      const finish = (j) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (this.poll === finish) this.poll = null;
+        resolve(j);
+      };
+      const timer = setTimeout(() => finish(null), AGENT_POLL_MS);
+      this.poll = finish;
+    });
+  },
+
+  _flush() {
+    if (this.poll && this.queue.length) this.poll(this.queue.shift());
+  },
+
+  // Agent side: deliver a job's outcome back to the waiting browser request.
+  report(id, ok, error) {
+    const w = this.waiters.get(id);
+    if (!w) return false;
+    clearTimeout(w.timer);
+    this.waiters.delete(id);
+    if (ok) w.resolve();
+    else    w.reject(new Error(error || 'Druckfehler am Agent'));
+    return true;
+  },
+};
+
+let printAgentToken = null;   // set once at startup from config
+function agentAuthorized(req) {
+  return Boolean(printAgentToken) && req.headers['x-agent-token'] === printAgentToken;
+}
 
 // ── login page ──────────────────────────────────────────────────────────────
 function serveLoginPage(res) {
@@ -202,6 +260,12 @@ export function startServer() {
     console.warn('  ⚠  SUNMI_APP_ID/SUNMI_APP_KEY not set — Sunmi features disabled.\n');
   }
 
+  printAgentToken = tryLoadPrintAgentToken();
+  const printAgentReady = Boolean(printAgentToken);
+  if (!printAgentReady) {
+    console.warn('  ⚠  PRINT_AGENT_TOKEN not set — printing disabled (no print agent can connect).\n');
+  }
+
   // Lazy-load heavy PDF deps only when first needed
   let _pdfLib = null, _qrcode = null;
   async function getPdfDeps() {
@@ -248,6 +312,39 @@ export function startServer() {
       return serveLoginPage(res);
     }
 
+    // ── Print-agent endpoints ─────────────────────────────────────────────────
+    // The NUC agent authenticates with X-Agent-Token, not a session cookie, so
+    // these sit ahead of the session gate. All require PRINT_AGENT_TOKEN to be set.
+    if (path.startsWith('/api/agent/')) {
+      if (!agentAuthorized(req)) return json(res, 401, { error: 'Bad agent token' });
+
+      // Agent reports the printers it can see via CUPS (lpstat -e).
+      if (method === 'POST' && path === '/api/agent/roster') {
+        let body;
+        try { body = JSON.parse(await readBody(req)); }
+        catch { return json(res, 400, { error: 'Invalid JSON body' }); }
+        printBridge.setRoster(body?.printers);
+        return json(res, 200, { ok: true });
+      }
+
+      // Agent long-polls for the next print job.
+      if (method === 'GET' && path === '/api/agent/next-job') {
+        const job = await printBridge.takeJob();
+        return json(res, 200, { job });   // { job: {id,zpl,printer} } or { job: null }
+      }
+
+      // Agent reports a job's outcome, unblocking the waiting browser request.
+      if (method === 'POST' && path === '/api/agent/result') {
+        let body;
+        try { body = JSON.parse(await readBody(req)); }
+        catch { return json(res, 400, { error: 'Invalid JSON body' }); }
+        printBridge.report(body?.id, body?.ok === true, body?.error);
+        return json(res, 200, { ok: true });
+      }
+
+      return json(res, 404, { error: 'Unknown agent endpoint' });
+    }
+
     // Everything else requires a valid session.
     if (!authed) {
       if (path.startsWith('/api/')) return json(res, 401, { error: 'Not authenticated' });
@@ -256,14 +353,10 @@ export function startServer() {
     }
 
     // ── GET /api/printers ─────────────────────────────────────────────────────
+    // Served from the roster the NUC agent last reported. Empty when the agent
+    // is offline/stale, so the UI shows "Kein Drucker gefunden".
     if (method === 'GET' && url === '/api/printers') {
-      try {
-        const { stdout } = await execAsync('lpstat -e');
-        const printers = stdout.split('\n').map(s => s.trim()).filter(Boolean);
-        return json(res, 200, printers);
-      } catch {
-        return json(res, 200, []); // no printers configured — return empty list
-      }
+      return json(res, 200, printBridge.agentOnline() ? printBridge.roster.printers : []);
     }
 
     // ── POST /api/lookup-full ─────────────────────────────────────────────────
@@ -296,6 +389,9 @@ export function startServer() {
             rentmanSerial: rentmanEntry?.serial  ?? null,
             refMismatch:   refMismatch ?? false,
             status: rowStatus(paynlessSerial, rentmanEntry),
+            // Reverse-lookup marker — set below when a token was matched as a Sunmi S/N
+            matchedBySn:    false,
+            scannedSn:      null,
             // Sunmi fields — filled in below (the resolved serial IS the Sunmi SN)
             sunmiSn:        null,
             sunmiGroupId:   null,
@@ -303,6 +399,45 @@ export function startServer() {
             sunmiOnline:    null,
           };
         });
+
+        // ── reverse lookup: token not found as a Kürzel → try it as a Sunmi S/N ──
+        // Rentman is the only bridge from serial → ref (Paynless has no reverse
+        // endpoint), so this only runs when Rentman is connected. Exact serial
+        // match only. Once we find the ref we resolve it forward through Paynless
+        // to fill the rest of the row.
+        if (rentmanToken) {
+          const reverseIdx = rows
+            .map((r, i) => (r.paynlessSerial === null && r.rentmanId === null ? i : -1))
+            .filter(i => i >= 0);
+
+          if (reverseIdx.length) {
+            const found = await Promise.all(
+              reverseIdx.map(i => lookupBySerial(ids[i], rentmanToken))
+            );
+            const hits = reverseIdx
+              .map((i, k) => ({ i, entry: found[k] }))
+              .filter(x => x.entry);
+
+            if (hits.length) {
+              const plResult  = await lookupDevices(hits.map(x => x.entry.ref), apiKey);
+              const plSerials = plResult.vendor_serials ?? [];
+              hits.forEach((x, k) => {
+                const entry          = x.entry;
+                const paynlessSerial = paynlessFound(plSerials[k]) ? plSerials[k] : null;
+                const row            = rows[x.i];
+                row.paynlessSerial = paynlessSerial;
+                row.rentmanId      = entry.id;
+                row.rentmanRef     = entry.ref;
+                row.rentmanSerial  = entry.serial;
+                row.refMismatch    = false;
+                row.matchedBySn    = true;
+                row.scannedSn      = ids[x.i];
+                row.ref            = entry.ref;   // display the discovered Kürzel
+                row.status         = rowStatus(paynlessSerial, entry);
+              });
+            }
+          }
+        }
 
         // ── enrich with Sunmi group / online status ─────────────────────────
         // The canonical device serial (Rentman preferred, Paynless fallback) is
@@ -532,7 +667,7 @@ export function startServer() {
           return json(res, 400, { error: '`mode` must be "label" or "card"' });
         }
 
-        await printZPL(zplBatch, printer);
+        await printBridge.submit(zplBatch, printer);
         return json(res, 200, { ok: true, count: quantity });
       } catch (e) {
         return json(res, 502, { error: e.message });
@@ -662,6 +797,7 @@ export function startServer() {
   http://localhost:${PORT}
   Rentman: ${rentmanAvailable ? '✓ verbunden' : '✗ kein Token'}
   Sunmi:   ${sunmiAvailable ? '✓ verbunden' : '✗ keine Keys'}
+  Druck:   ${printAgentReady ? '✓ Agent-Token gesetzt' : '✗ kein Agent-Token'}
   ──────────────────────────────────────
   Ctrl-C zum Beenden
 `);

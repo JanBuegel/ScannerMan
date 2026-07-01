@@ -573,13 +573,14 @@
       <label class="field-label" for="sc-input">Unsere Seriennummern</label>
       <div class="tag-field" id="sc-tag-field">
         <input id="sc-input" class="tag-input-bare" type="text"
-               placeholder="Kürzel scannen oder eintippen…"
+               placeholder="Kürzel oder Sunmi S/N scannen…"
                autocomplete="off" spellcheck="false" />
       </div>
       <p class="hint">
         Scan oder Eingabe — <kbd>Enter</kbd> / <kbd>,</kbd> / <kbd>Space</kbd> fügt hinzu.
         Abschicken mit <kbd>⌘ Enter</kbd> oder <kbd>Ctrl Enter</kbd>.
-        <kbd>Backspace</kbd> entfernt das letzte Kürzel.
+        <kbd>Backspace</kbd> entfernt den letzten Eintrag.
+        Kein Kürzel gefunden? Es wird automatisch als Sunmi S/N gesucht.
       </p>
       <div class="actions">
         <button class="btn-primary" id="sc-lookup-btn" onclick="scDoLookup()">
@@ -966,15 +967,17 @@
     const sunmiOn  = !!data.sunmiAvailable;
     const anySunmi = sunmiOn && scLastRows.some(r=>r.sunmiSn);
     const tbody = scLastRows.map((row,i)=>{
-      const {ref,paynlessSerial,rentmanSerial,rentmanId,rentmanRef,refMismatch,status}=row;
+      const {ref,paynlessSerial,rentmanSerial,rentmanId,rentmanRef,refMismatch,status,matchedBySn,scannedSn}=row;
       const badge=SC_STATUS[status]??SC_STATUS.not_found;
       const saveBtn=scCanSave(status)&&rentmanId
         ?`<button class="btn-save" id="sc-save-${i}" onclick="scSaveOne(${i})" title="Paynless SN in Rentman">↑ Rentman</button>`:'';
-      // Ref cell: show mismatch indicator if Rentman has a different ref
+      // Ref cell: mismatch indicator, or a marker when the ref was found via Sunmi S/N
       const refCell = refMismatch
         ? `${esc(ref)} <span class="badge badge-warn" style="font-size:10px;padding:1px 5px" title="Rentman hat '${esc(rentmanRef)}' — klicken zum Korrigieren">Ref ≠</span>
            <button class="btn-save" id="sc-fixref-${i}" onclick="scFixRef(${i})" style="margin-left:2px" title="'${esc(rentmanRef)}' → '${esc(ref)}' in Rentman">↑ Ref fix</button>`
-        : esc(ref);
+        : matchedBySn
+          ? `${esc(ref)} <span class="badge badge-neutral" style="font-size:10px;padding:1px 5px" title="Gefunden über Sunmi S/N '${esc(scannedSn)}'">via S/N</span>`
+          : esc(ref);
       const checkCell = sunmiOn
         ? `<td class="td-check">${row.sunmiSn?`<input type="checkbox" class="sc-check" data-i="${i}">`:''}</td>`
         : '';
