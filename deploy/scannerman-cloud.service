@@ -1,0 +1,33 @@
+[Unit]
+Description=ScannerMan – TiTo Suite web server (cloud)
+Documentation=https://github.com/JanBuegel/ScannerMan
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# ── EDIT these three for your box ───────────────────────────────────────────
+# User the service runs as (create one, or use your deploy user):
+User=scannerman
+# Absolute path to the checked-out repo (holds .env with the secrets):
+WorkingDirectory=/opt/scannerman
+# Absolute path to node — find it with:  command -v node
+ExecStart=/usr/bin/node web/server.js
+# ────────────────────────────────────────────────────────────────────────────
+
+# Listen port. Overrides the code default; keep in sync with your reverse proxy.
+Environment=PORT=3006
+
+# API_KEY, RENTMAN_API_TOKEN, SUNMI_*, AUTH_*, PRINT_AGENT_TOKEN are read from
+# the .env in WorkingDirectory — nothing else to set here.
+
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=scannerman
+
+[Install]
+WantedBy=multi-user.target

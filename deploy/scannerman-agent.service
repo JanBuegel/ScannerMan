@@ -1,0 +1,37 @@
+[Unit]
+Description=ScannerMan – NUC print agent
+Documentation=https://github.com/JanBuegel/ScannerMan
+# Needs the network (to reach the cloud) and CUPS (lpstat/lpr). Wants, not
+# Requires — the agent tolerates CUPS being briefly unavailable.
+After=network-online.target cups.service
+Wants=network-online.target cups.service
+
+[Service]
+Type=simple
+
+# ── EDIT these three for the NUC ────────────────────────────────────────────
+# User the agent runs as — must be allowed to print (member of group lp):
+User=scannerman
+# Absolute path to the checked-out repo on the NUC (holds its .env):
+WorkingDirectory=/opt/scannerman
+# Absolute path to node — find it with:  command -v node
+ExecStart=/usr/bin/node agent/print-agent.js
+# ────────────────────────────────────────────────────────────────────────────
+
+# Ensure the agent can talk to CUPS.
+SupplementaryGroups=lp
+
+# CLOUD_URL and PRINT_AGENT_TOKEN are read from the .env in WorkingDirectory.
+# Alternatively set them explicitly instead of using .env:
+# Environment=CLOUD_URL=https://scannerman.example.com
+# Environment=PRINT_AGENT_TOKEN=your-shared-secret
+
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=scannerman-agent
+
+[Install]
+WantedBy=multi-user.target
